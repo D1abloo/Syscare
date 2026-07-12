@@ -77,6 +77,21 @@ def maintenance_items() -> list[MaintenanceItem]:
                     ("qlmanage", "-r", "cache"),
                 ),
                 MaintenanceItem(
+                    "preferences_daemon",
+                    "Reiniciar preferencias",
+                    "macOS",
+                    "Reinicia cfprefsd para refrescar preferencias de usuario sin reiniciar sesion.",
+                    ("killall", "cfprefsd"),
+                ),
+                MaintenanceItem(
+                    "launchservices",
+                    "Reconstruir LaunchServices",
+                    "macOS",
+                    "Repara asociaciones de apps y entradas de Abrir con.",
+                    _launchservices_command(),
+                    risky=True,
+                ),
+                MaintenanceItem(
                     "xcode_derived",
                     "Limpiar DerivedData de Xcode",
                     "Desarrollo",
@@ -92,11 +107,19 @@ def maintenance_items() -> list[MaintenanceItem]:
                     ("brew", "cleanup", "-s"),
                 ),
                 MaintenanceItem(
+                    "brew_autoremove",
+                    "Homebrew autoremove",
+                    "Paquetes",
+                    "Elimina dependencias de Homebrew que ya no necesita ningun paquete instalado.",
+                    ("brew", "autoremove"),
+                    risky=True,
+                ),
+                MaintenanceItem(
                     "spotlight",
-                    "Reindexar Spotlight",
+                    "Reindexar Spotlight usuario",
                     "Busqueda",
-                    "Solicita una reindexacion del volumen principal. Puede pedir permisos.",
-                    ("mdutil", "-E", "/"),
+                    "Solicita una reindexacion de tu carpeta de usuario.",
+                    ("mdutil", "-E", str(HOME)),
                     risky=True,
                 ),
             ]
@@ -154,7 +177,16 @@ def maintenance_items() -> list[MaintenanceItem]:
                 ),
             ]
         )
-    return [item for item in items if not item.command or shutil.which(item.command[0])]
+    return [item for item in items if _command_available(item.command)]
+
+
+def _command_available(command: tuple[str, ...]) -> bool:
+    if not command:
+        return False
+    executable = Path(command[0])
+    if executable.is_absolute():
+        return executable.exists() and os.access(executable, os.X_OK)
+    return shutil.which(command[0]) is not None
 
 
 def _dns_command() -> tuple[str, ...]:
@@ -164,6 +196,13 @@ def _dns_command() -> tuple[str, ...]:
         return ("resolvectl", "flush-caches")
     if shutil.which("systemd-resolve"):
         return ("systemd-resolve", "--flush-caches")
+    return ()
+
+
+def _launchservices_command() -> tuple[str, ...]:
+    command = Path("/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister")
+    if command.exists():
+        return (str(command), "-kill", "-r", "-domain", "user")
     return ()
 
 

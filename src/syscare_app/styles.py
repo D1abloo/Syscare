@@ -5,7 +5,7 @@ APP_QSS = """
   letter-spacing: 0px;
 }
 QMainWindow, QWidget#Root {
-  background: #f6f8fb;
+  background: #f7f9fc;
   color: #172033;
 }
 QWidget {
@@ -19,9 +19,15 @@ QFrame#Header {
   border-bottom: 1px solid #dbe3ee;
 }
 QFrame#Hero {
-  background: #eefaf6;
-  border: 1px solid #bfe8d8;
+  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ecfff8, stop:0.55 #f4fbff, stop:1 #ffffff);
+  border: 1px solid #b8ead8;
   border-radius: 8px;
+}
+QLabel#LogoImage {
+  background: #e9fff6;
+  border: 1px solid #b8ead8;
+  border-radius: 12px;
+  padding: 4px;
 }
 QLabel#LogoMark {
   background: #19c391;
@@ -46,7 +52,7 @@ QLabel#HeroTitle {
   color: #12372d;
 }
 QLabel#HealthScore {
-  background: #19c391;
+  background: qradialgradient(cx:0.35, cy:0.28, radius:0.95, fx:0.28, fy:0.22, stop:0 #48e6b8, stop:1 #19c391);
   color: #05261d;
   border-radius: 48px;
   font-size: 30px;
@@ -72,8 +78,8 @@ QPushButton {
   font-weight: 700;
 }
 QPushButton:hover {
-  background: #f1f5f9;
-  border-color: #94a3b8;
+  background: #f8fbff;
+  border-color: #7ddfc4;
 }
 QPushButton:pressed {
   background: #e2e8f0;
@@ -116,7 +122,7 @@ QPushButton[nav="true"]:checked {
 }
 QFrame[card="true"] {
   background: #ffffff;
-  border: 1px solid #dbe3ee;
+  border: 1px solid #d8e2ee;
   border-radius: 8px;
 }
 QLineEdit, QComboBox {
@@ -133,7 +139,7 @@ QTableWidget, QListWidget, QTextEdit {
   background: #ffffff;
   alternate-background-color: #f8fafc;
   color: #172033;
-  border: 1px solid #dbe3ee;
+  border: 1px solid #d8e2ee;
   border-radius: 8px;
   gridline-color: #e6edf5;
   selection-background-color: #dff7ef;
@@ -143,7 +149,7 @@ QTableWidget::item {
   padding: 6px;
 }
 QHeaderView::section {
-  background: #f1f5f9;
+  background: #f4f7fb;
   color: #475569;
   border: 0;
   border-bottom: 1px solid #dbe3ee;
@@ -159,7 +165,7 @@ QProgressBar {
   height: 14px;
 }
 QProgressBar::chunk {
-  background: #19c391;
+  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #19c391, stop:1 #53d7b0);
   border-radius: 7px;
 }
 QCheckBox {

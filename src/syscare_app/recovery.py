@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import configparser
+import os
 import shutil
 import urllib.parse
 from dataclasses import dataclass
@@ -24,6 +25,10 @@ def trash_roots() -> list[tuple[Path, Path]]:
         (HOME / ".Trash" / "files", HOME / ".Trash" / "info"),
         (HOME / ".Trash", HOME / ".Trash" / "info"),
     ]
+    volumes = Path("/Volumes")
+    if volumes.exists():
+        for volume in volumes.iterdir():
+            roots.append((volume / ".Trashes" / str(os.getuid()), volume / ".Trashes" / str(os.getuid()) / "info"))
     return [(files, info) for files, info in roots if files.exists()]
 
 
@@ -36,6 +41,8 @@ def scan_recoverable(query: str = "") -> list[RecoverableFile]:
         except OSError:
             continue
         for path in entries:
+            if path.name in {".DS_Store", "info"}:
+                continue
             if needle and needle not in path.name.lower():
                 continue
             original, deleted_at = _trash_info(path, info_root)

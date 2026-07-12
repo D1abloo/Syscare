@@ -3,11 +3,13 @@
 SysCare es una aplicacion grafica para Linux y macOS orientada a mantenimiento de usuario:
 
 - Limpieza de temporales, caches, logs, papelera local y cookies conocidas.
+- En macOS limpia tambien Quick Look, diagnosticos, estados guardados y `~/.Trash`.
 - Optimizacion con cache DNS, cache de fuentes, limpieza de paquetes, journal y revision de entradas invalidas.
 - Mantenimiento adicional para pip, npm, Docker, Quick Look, Xcode DerivedData y caches de gestores Linux cuando existan.
 - Deteccion de equivalentes Linux/macOS a entradas invalidas del registro: enlaces rotos, `.desktop` sin destino, LaunchAgents obsoletos y archivos grandes.
 - Busqueda y recuperacion de archivos borrados que aun estan en la papelera del usuario.
 - Panel de rendimiento con CPU, memoria, disco, bateria y temperaturas disponibles.
+- En macOS muestra estado termico mediante `pmset` cuando no hay sensores de temperatura accesibles.
 - Indicador en barra superior/bandeja del sistema con memoria y temperatura, y menu para mostrar/ocultar, limpiar o buscar actualizaciones.
 - Buscador de aplicaciones instaladas.
 - Instalador y desinstalador de paquetes mediante Homebrew, apt, dnf, pacman, snap o flatpak.
@@ -80,7 +82,7 @@ Instala Python 3 desde <https://www.python.org/downloads/macos/> y ejecuta:
 ```
 
 Para abrirla como app desde Finder puedes usar Automator, Platypus o generar un binario con PyInstaller.
-Tambien puedes crear un lanzador local en `~/Applications`:
+Tambien puedes crear un lanzador local en `~/Applications` con icono nativo `.icns`:
 
 ```bash
 ./scripts/create-macos-launcher.sh

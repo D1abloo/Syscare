@@ -45,6 +45,7 @@ from .system import (
     AppEntry,
     CleanupReport,
     cleanup_targets,
+    current_platform,
     delete_target,
     format_bytes,
     list_installed_apps,
@@ -171,14 +172,16 @@ class MainWindow(QMainWindow):
         layout.setSpacing(14)
 
         brand_row = QHBoxLayout()
-        logo = QLabel("S")
-        logo.setObjectName("LogoMark")
+        logo = QLabel()
+        logo.setObjectName("LogoImage")
+        logo.setPixmap(self.app_icon.pixmap(40, 40))
         logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
         logo.setFixedSize(40, 40)
         brand_text = QVBoxLayout()
         brand_text.setSpacing(1)
         brand_text.addWidget(make_label("SysCare", "AppTitle"))
-        brand_text.addWidget(make_label("Linux y macOS", muted=True))
+        platform_label = "macOS Maintenance" if current_platform() == "darwin" else "Linux Maintenance"
+        brand_text.addWidget(make_label(platform_label, muted=True))
         brand_row.addWidget(logo)
         brand_row.addLayout(brand_text)
         layout.addLayout(brand_row)
@@ -697,7 +700,7 @@ SysCare evita rutas del sistema y trabaja sobre carpetas del usuario o temporale
 
         temps = temperature_snapshot()
         temp_values = [value for _, value in temps if value is not None]
-        temp_summary = f"{temp_values[0]:.1f} C" if temp_values else "N/D"
+        temp_summary = f"{temp_values[0]:.1f} C" if temp_values else ("OK" if temps else "N/D")
         memory_summary = f"{data['memory_percent']:.0f}% · {format_bytes(int(data['memory_used']))}"
         self.header_metric.setText(f"Memoria {memory_summary} · Temp {temp_summary}")
         if getattr(self, "tray_icon", None):
@@ -709,7 +712,7 @@ SysCare evita rutas del sistema y trabaja sobre carpetas del usuario o temporale
         if not temps:
             self.temp_list.addItem("No hay sensores de temperatura expuestos por el sistema.")
         for name, value in temps[:24]:
-            self.temp_list.addItem(f"{name}: {value:.1f} C" if value is not None else f"{name}: N/D")
+            self.temp_list.addItem(f"{name}: {value:.1f} C" if value is not None else name)
 
     def _scan_cleanup(self) -> None:
         self.clean_status.setText("Escaneando rutas...")
@@ -745,7 +748,7 @@ SysCare evita rutas del sistema y trabaja sobre carpetas del usuario o temporale
         answer = QMessageBox.question(
             self,
             "Confirmar limpieza",
-            f"Se moveran a la papelera o eliminaran elementos de: {names}. Continuar?",
+            f"Se eliminaran permanentemente elementos de: {names}.\n\nContinuar?",
         )
         if answer != QMessageBox.StandardButton.Yes:
             return

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if command -v brew >/dev/null 2>&1; then
+if ! command -v python3 >/dev/null 2>&1 && command -v brew >/dev/null 2>&1; then
   brew install python || true
 fi
 
@@ -11,3 +11,4 @@ if ! command -v python3 >/dev/null 2>&1; then
 fi
 
 "$(dirname "$0")/install-dev.sh"
+"$(dirname "$0")/create-macos-launcher.sh"

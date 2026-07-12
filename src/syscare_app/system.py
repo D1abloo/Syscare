@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import platform
+import plistlib
 import shutil
 import subprocess
 import tempfile
@@ -108,6 +109,24 @@ def cleanup_targets() -> list[CleanupTarget]:
                     "Mantenimiento",
                     "Ventanas y estados guardados por apps al cerrarse.",
                     (HOME / "Library" / "Saved Application State",),
+                    risky=True,
+                ),
+                CleanupTarget(
+                    "quicklook_cache",
+                    "Caché Quick Look",
+                    "Mantenimiento",
+                    "Miniaturas y previsualizaciones generadas por macOS.",
+                    (
+                        HOME / "Library" / "Caches" / "com.apple.QuickLook.thumbnailcache",
+                        HOME / "Library" / "Caches" / "QuickLook",
+                    ),
+                ),
+                CleanupTarget(
+                    "trash",
+                    "Papelera de macOS",
+                    "Limpieza",
+                    "Contenido de ~/.Trash. Libera espacio de forma permanente.",
+                    (HOME / ".Trash",),
                     risky=True,
                 ),
                 CleanupTarget(
@@ -258,9 +277,16 @@ def _cookie_files(root: Path) -> Iterable[Path]:
         return
     if not root.is_dir():
         return
-    for child in root.rglob("*"):
-        if child.is_file() and child.name.lower() in names:
-            yield child
+    try:
+        children = root.rglob("*")
+        for child in children:
+            try:
+                if child.is_file() and child.name.lower() in names:
+                    yield child
+            except OSError:
+                continue
+    except OSError:
+        return
 
 
 def _walk_target_paths(target: CleanupTarget) -> Iterable[Path]:
@@ -270,8 +296,11 @@ def _walk_target_paths(target: CleanupTarget) -> Iterable[Path]:
         elif root.is_file():
             yield root
         elif root.is_dir():
-            for child in root.iterdir():
-                yield child
+            try:
+                for child in root.iterdir():
+                    yield child
+            except OSError:
+                continue
 
 
 def _path_size(path: Path) -> tuple[int, int, list[str]]:
@@ -317,17 +346,19 @@ def delete_target(target: CleanupTarget) -> CleanupReport:
             errors.append(f"Ruta omitida por seguridad: {path}")
             continue
         try:
-            if send2trash:
-                send2trash(str(path))
-            elif path.is_dir() and not path.is_symlink():
-                shutil.rmtree(path)
-            else:
-                path.unlink(missing_ok=True)
+            _delete_path(path)
         except OSError as exc:
             errors.append(f"{path}: {exc}")
-        except Exception as exc:  # send2trash can raise platform-specific errors
+        except Exception as exc:
             errors.append(f"{path}: {exc}")
     return CleanupReport(target, before.size, before.items, errors)
+
+
+def _delete_path(path: Path) -> None:
+    if path.is_dir() and not path.is_symlink():
+        shutil.rmtree(path)
+    else:
+        path.unlink(missing_ok=True)
 
 
 def performance_snapshot() -> dict[str, object]:
@@ -350,13 +381,33 @@ def temperature_snapshot() -> list[tuple[str, float | None]]:
     try:
         sensors = psutil.sensors_temperatures(fahrenheit=False)
     except (AttributeError, OSError):
-        return []
+        sensors = {}
     readings: list[tuple[str, float | None]] = []
     for sensor_name, entries in sensors.items():
         for entry in entries:
             label = entry.label or sensor_name
             readings.append((label, entry.current))
+    if not readings and current_platform() == "darwin":
+        readings.extend(_macos_thermal_snapshot())
     return readings
+
+
+def _macos_thermal_snapshot() -> list[tuple[str, float | None]]:
+    code, output = run_process(["pmset", "-g", "therm"], timeout=8)
+    if code != 0 or not output:
+        return []
+    readings: list[tuple[str, float | None]] = []
+    for line in output.splitlines():
+        clean = " ".join(line.strip().split())
+        if clean == "Note: No thermal warning level has been recorded":
+            readings.append(("Estado termico: normal", None))
+        elif clean == "Note: No performance warning level has been recorded":
+            readings.append(("Rendimiento termico: normal", None))
+        elif "CPU_Scheduler_Limit" in clean:
+            readings.append((clean.replace("CPU_Scheduler_Limit", "Planificador CPU").replace(" = ", ": "), None))
+        elif "CPU_Speed_Limit" in clean:
+            readings.append((clean.replace("CPU_Speed_Limit", "Limite velocidad CPU").replace(" = ", ": "), None))
+    return readings[:6]
 
 
 def list_installed_apps() -> list[AppEntry]:
@@ -372,8 +423,28 @@ def _list_macos_apps() -> list[AppEntry]:
         if not root.exists():
             continue
         for app in sorted(root.glob("*.app")):
-            apps.append(AppEntry(app.stem, "macOS App", app.name, str(app)))
+            info = _macos_app_info(app)
+            apps.append(AppEntry(info["name"], "macOS App", info["bundle_id"], str(app), info["version"]))
     return apps
+
+
+def _macos_app_info(app: Path) -> dict[str, str]:
+    info_path = app / "Contents" / "Info.plist"
+    fallback = {"name": app.stem, "bundle_id": app.name, "version": ""}
+    try:
+        with info_path.open("rb") as handle:
+            payload = plistlib.load(handle)
+    except (OSError, plistlib.InvalidFileException):
+        return fallback
+    name = str(
+        payload.get("CFBundleDisplayName")
+        or payload.get("CFBundleName")
+        or payload.get("CFBundleExecutable")
+        or app.stem
+    )
+    bundle_id = str(payload.get("CFBundleIdentifier") or app.name)
+    version = str(payload.get("CFBundleShortVersionString") or payload.get("CFBundleVersion") or "")
+    return {"name": name, "bundle_id": bundle_id, "version": version}
 
 
 def _desktop_name(path: Path) -> str | None:
