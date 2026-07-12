@@ -9,7 +9,7 @@ SysCare es una aplicacion grafica para Linux y macOS orientada a mantenimiento d
 - Optimizacion de memoria RAM mediante la herramienta nativa disponible (`purge` en macOS).
 - Deteccion de equivalentes Linux/macOS a entradas invalidas del registro: enlaces rotos, `.desktop` sin destino, LaunchAgents obsoletos y archivos grandes.
 - Busqueda y recuperacion de archivos borrados que aun estan en la papelera del usuario.
-- Recuperacion por papelera, por carpeta original y recuperacion profunda asistida de disco completo con PhotoRec/TestDisk.
+- Recuperacion propia por papelera local, por carpeta original y por papeleras de todos los volumenes montados.
 - Panel de rendimiento con CPU, memoria, disco, bateria y temperaturas disponibles.
 - En macOS muestra estado termico mediante `pmset` cuando no hay sensores de temperatura accesibles.
 - Indicador en barra superior/bandeja del sistema con memoria y temperatura, y menu para mostrar/ocultar, limpiar o buscar actualizaciones.
@@ -17,7 +17,7 @@ SysCare es una aplicacion grafica para Linux y macOS orientada a mantenimiento d
 - Instalador y desinstalador de paquetes mediante Homebrew, apt, dnf, pacman, snap o flatpak.
 - Desinstalacion de apps `.app` en macOS moviendolas a la papelera.
 - Compresion y descompresion de carpetas/archivos.
-- Comprobacion de actualizaciones desde GitHub Releases, `SYSCARE_REPO_URL` o el remoto Git `origin`.
+- Comprobacion de actualizaciones desde GitHub Releases o ultimo commit de GitHub.
 - Panel de ayuda integrado con estado de actualizaciones.
 - Interfaz clara profesional con navegacion en header y animacion de apertura.
 
@@ -119,7 +119,7 @@ O usar:
 
 ## Actualizaciones
 
-Si ejecutas SysCare desde un clon Git, el boton de actualizaciones consulta el remoto `origin`.
+El boton de actualizaciones consulta GitHub. Primero comprueba Releases y, si no hay releases, compara el ultimo commit de `main`.
 
 Para consultar un repositorio concreto sin Git local:
 
@@ -150,11 +150,5 @@ La limpieza esta limitada a rutas de usuario y temporales conocidos. En director
 
 Linux y macOS no tienen registro de Windows. Por eso SysCare trata como "entradas invalidas" los accesos y metadatos equivalentes: enlaces rotos, launch agents obsoletos, accesos `.desktop` invalidos y referencias a apps eliminadas.
 
-La recuperacion de archivos funciona si el archivo sigue dentro de la papelera. Si fue eliminado de forma permanente, se necesita una herramienta forense externa y el resultado depende del sistema de archivos y de si los bloques fueron sobrescritos.
-Para recuperacion profunda de disco completo en macOS instala PhotoRec/TestDisk:
-
-```bash
-brew install testdisk
-```
-
-Guarda los archivos recuperados en otro disco para evitar sobrescribir datos borrados.
+La recuperacion propia funciona si el archivo sigue dentro de una papelera accesible del usuario o de un volumen montado.
+La recuperacion de disco completo se limita a papeleras accesibles del usuario y volumenes montados. macOS/APFS no permite recuperar sectores borrados permanentemente desde una app normal sin herramientas forenses y permisos especiales.

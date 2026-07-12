@@ -5,7 +5,7 @@ import webbrowser
 from pathlib import Path
 from typing import Callable
 
-from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QThread, QTimer, Signal, Slot
+from PySide6.QtCore import QEvent, QEasingCurve, QPropertyAnimation, Qt, QThread, QTimer, Signal, Slot
 from PySide6.QtGui import QAction, QCloseEvent, QColor, QIcon, QPalette
 from PySide6.QtWidgets import (
     QApplication,
@@ -39,7 +39,7 @@ from . import __app_name__, __version__
 from .archives import compress_folder, extract_archive
 from .maintenance import Issue, MaintenanceItem, maintenance_items, run_maintenance, scan_invalid_entries
 from .packages import PackageManager, available_managers, install, list_installed, search, uninstall
-from .recovery import RecoverableFile, deep_recovery_status, launch_deep_recovery, recover_file, scan_recoverable, scan_recoverable_in_folder
+from .recovery import RecoverableFile, recover_file, scan_recoverable, scan_recoverable_all_disks, scan_recoverable_in_folder
 from .styles import APP_QSS
 from .system import (
     AppEntry,
@@ -230,8 +230,12 @@ class MainWindow(QMainWindow):
         if not QSystemTrayIcon.isSystemTrayAvailable():
             return
         self.tray_menu = QMenu(self)
+        self.tray_cpu_action = QAction("CPU: calculando...", self)
+        self.tray_cpu_action.setEnabled(False)
         self.tray_memory_action = QAction("Memoria: calculando...", self)
         self.tray_memory_action.setEnabled(False)
+        self.tray_disk_action = QAction("Disco: calculando...", self)
+        self.tray_disk_action.setEnabled(False)
         self.tray_temp_action = QAction("Temperatura: calculando...", self)
         self.tray_temp_action.setEnabled(False)
         show_action = QAction("Mostrar/Ocultar SysCare", self)
@@ -243,7 +247,9 @@ class MainWindow(QMainWindow):
         quit_action = QAction("Salir", self)
         quit_action.triggered.connect(self._quit_from_tray)
 
+        self.tray_menu.addAction(self.tray_cpu_action)
         self.tray_menu.addAction(self.tray_memory_action)
+        self.tray_menu.addAction(self.tray_disk_action)
         self.tray_menu.addAction(self.tray_temp_action)
         self.tray_menu.addSeparator()
         self.tray_menu.addAction(show_action)
@@ -293,6 +299,19 @@ class MainWindow(QMainWindow):
             )
             self._tray_notice_shown = True
         event.ignore()
+
+    def changeEvent(self, event) -> None:
+        if event.type() == QEvent.Type.WindowStateChange and self.isMinimized() and getattr(self, "tray_icon", None):
+            QTimer.singleShot(0, self.hide)
+            if not self._tray_notice_shown:
+                self.tray_icon.showMessage(
+                    "SysCare sigue activo",
+                    "CPU, memoria, disco y temperatura siguen disponibles en la barra superior.",
+                    QSystemTrayIcon.MessageIcon.Information,
+                    3000,
+                )
+                self._tray_notice_shown = True
+        super().changeEvent(event)
 
     def _build_dashboard_page(self) -> QWidget:
         page, layout = self._page_shell("Panel del equipo", "Rendimiento, temperatura y estado general en tiempo real.")
@@ -468,10 +487,10 @@ class MainWindow(QMainWindow):
 
     def _build_recovery_page(self) -> QWidget:
         page, layout = self._page_shell("Recuperar archivos borrados", "Busca elementos en la papelera y restauralos a su ruta original o a otra carpeta.")
-        recovery_card, recovery_layout = card("Busqueda de recuperables", "Papelera y carpeta restauran elementos localizados. Disco completo abre recuperacion profunda con PhotoRec/TestDisk.")
+        recovery_card, recovery_layout = card("Busqueda de recuperables", "Servicio propio: busca en la papelera local, carpetas originales y papeleras de volumenes montados.")
         top_row = QHBoxLayout()
         self.recovery_scope = QComboBox()
-        self.recovery_scope.addItems(("Papelera", "Carpeta", "Disco completo"))
+        self.recovery_scope.addItems(("Papelera", "Carpeta", "Todo el disco"))
         self.recovery_scope.currentTextChanged.connect(self._recovery_scope_changed)
         self.recovery_query = QLineEdit()
         self.recovery_query.setPlaceholderText("Filtrar por nombre...")
@@ -484,8 +503,6 @@ class MainWindow(QMainWindow):
         self.recovery_folder_button = folder_button
         scan_button = make_button("Buscar borrados", primary=True)
         scan_button.clicked.connect(self._scan_recovery)
-        deep_button = make_button("Recuperacion profunda")
-        deep_button.clicked.connect(self._launch_deep_recovery)
         restore_button = make_button("Restaurar original")
         restore_button.clicked.connect(self._recover_selected_original)
         restore_to_button = make_button("Restaurar en...")
@@ -495,7 +512,6 @@ class MainWindow(QMainWindow):
         top_row.addWidget(self.recovery_folder, 1)
         top_row.addWidget(folder_button)
         top_row.addWidget(scan_button)
-        top_row.addWidget(deep_button)
         top_row.addWidget(restore_button)
         top_row.addWidget(restore_to_button)
         recovery_layout.addLayout(top_row)
@@ -540,21 +556,23 @@ class MainWindow(QMainWindow):
         installed_layout.addWidget(self.installed_table)
         grid.addWidget(installed_card, 0, 0)
 
-        package_card, package_layout = card("Instalador de paquetes", "Usa Homebrew, apt, dnf, pacman, snap o flatpak si estan instalados.")
+        package_card, package_layout = card("Instalador de paquetes", "Detecta gestores instalados segun el SO: Brew/MacPorts en macOS; apt, yum, dnf, zypper, pacman, snap o flatpak en Linux.")
         manager_row = QHBoxLayout()
         self.manager_combo = QComboBox()
-        for manager in self.managers:
-            self.manager_combo.addItem(manager.name, manager.key)
-        if not self.managers:
-            self.manager_combo.addItem("Sin gestores detectados", "")
+        self._populate_manager_combo()
+        refresh_managers = make_button("Detectar gestores")
+        refresh_managers.clicked.connect(self._refresh_package_managers)
         self.package_query = QLineEdit()
         self.package_query.setPlaceholderText("Buscar paquete o escribir nombre exacto...")
         search_button = make_button("Buscar", primary=True)
         search_button.clicked.connect(self._search_packages)
         manager_row.addWidget(self.manager_combo)
+        manager_row.addWidget(refresh_managers)
         manager_row.addWidget(self.package_query, 1)
         manager_row.addWidget(search_button)
         package_layout.addLayout(manager_row)
+        self.manager_status = make_label(self._manager_status_text(), muted=True)
+        package_layout.addWidget(self.manager_status)
 
         action_row = QHBoxLayout()
         self.package_name = QLineEdit()
@@ -580,6 +598,24 @@ class MainWindow(QMainWindow):
         layout.addLayout(grid, 1)
         self._load_installed_apps()
         return page
+
+    def _populate_manager_combo(self) -> None:
+        self.manager_combo.clear()
+        for manager in self.managers:
+            self.manager_combo.addItem(manager.name, manager.key)
+        if not self.managers:
+            self.manager_combo.addItem("Sin gestores detectados", "")
+
+    def _manager_status_text(self) -> str:
+        if not self.managers:
+            return "No se detecto ningun gestor compatible instalado para este sistema."
+        names = ", ".join(manager.name for manager in self.managers)
+        return f"Gestores detectados: {names}"
+
+    def _refresh_package_managers(self) -> None:
+        self.managers = available_managers()
+        self._populate_manager_combo()
+        self.manager_status.setText(self._manager_status_text())
 
     def _build_archive_page(self) -> QWidget:
         page, layout = self._page_shell("Archivos comprimidos", "Comprime carpetas y descomprime archivos soportados por Python.")
@@ -663,11 +699,11 @@ Lanzamiento: `syscare` o `./scripts/run.sh`
 - Escanea antes de limpiar. Las categorias de privacidad pueden cerrar sesiones.
 - Optimizar incluye DNS, cache de fuentes, limpieza de paquetes y revision de entradas invalidas.
 - Linux/macOS no tienen registro de Windows; SysCare revisa equivalentes como enlaces rotos, `.desktop` invalidos y LaunchAgents obsoletos.
-- Recuperar busca archivos que aun estan en la papelera. No puede garantizar recuperacion forense de archivos eliminados permanentemente.
+- Recuperar usa el servicio propio de SysCare: papelera local, carpeta original y papeleras de volumenes montados.
 - En macOS, la desinstalacion mueve apps `.app` a la papelera.
-- En Linux, instala y elimina paquetes desde el gestor detectado. Puede pedir permisos con `pkexec` o `sudo`.
+- Instala y elimina paquetes desde el gestor detectado para tu SO. Puede pedir permisos con `pkexec` o `sudo`.
 - La compresion usa formatos `zip`, `gztar`, `bztar` y `xztar`.
-- Las actualizaciones se consultan desde `SYSCARE_REPO_URL`, GitHub Releases o el remoto `origin` si ejecutas desde un clon Git.
+- Las actualizaciones se consultan desde GitHub Releases o el ultimo commit de GitHub.
 
 ## Seguridad
 
@@ -730,9 +766,13 @@ SysCare evita rutas del sistema y trabaja sobre carpetas del usuario o temporale
         memory_summary = f"{data['memory_percent']:.0f}% · {format_bytes(int(data['memory_used']))}"
         self.header_metric.setText(f"Memoria {memory_summary} · Temp {temp_summary}")
         if getattr(self, "tray_icon", None):
+            cpu_summary = f"{data['cpu']:.0f}%"
+            disk_summary = f"{data['disk_percent']:.0f}% · {format_bytes(int(data['disk_used']))}"
+            self.tray_cpu_action.setText(f"CPU: {cpu_summary}")
             self.tray_memory_action.setText(f"Memoria: {memory_summary} de {format_bytes(int(data['memory_total']))}")
+            self.tray_disk_action.setText(f"Disco: {disk_summary} de {format_bytes(int(data['disk_total']))}")
             self.tray_temp_action.setText(f"Temperatura: {temp_summary}")
-            self.tray_icon.setToolTip(f"SysCare\nMemoria: {memory_summary}\nTemperatura: {temp_summary}")
+            self.tray_icon.setToolTip(f"SysCare\nCPU: {cpu_summary}\nMemoria: {memory_summary}\nDisco: {disk_summary}\nTemperatura: {temp_summary}")
 
         self.temp_list.clear()
         if not temps:
@@ -843,9 +883,8 @@ SysCare evita rutas del sistema y trabaja sobre carpetas del usuario o temporale
         folder_mode = scope == "Carpeta"
         self.recovery_folder.setVisible(folder_mode)
         self.recovery_folder_button.setVisible(folder_mode)
-        if scope == "Disco completo":
-            available, message = deep_recovery_status()
-            self.recovery_status.setText(message if available else f"{message}. La recuperacion completa requiere herramienta externa y permisos.")
+        if scope == "Todo el disco":
+            self.recovery_status.setText("Se buscaran archivos recuperables en papeleras del usuario y volumenes montados.")
 
     def _pick_recovery_folder(self) -> None:
         directory = QFileDialog.getExistingDirectory(self, "Carpeta original a buscar")
@@ -854,14 +893,9 @@ SysCare evita rutas del sistema y trabaja sobre carpetas del usuario o temporale
 
     def _scan_recovery(self) -> None:
         scope = self.recovery_scope.currentText()
-        if scope == "Disco completo":
-            available, message = deep_recovery_status()
-            self.recovery_status.setText(message)
-            QMessageBox.information(
-                self,
-                "Recuperacion profunda",
-                f"{message}\n\nPara recuperar archivos borrados de todo un disco usa PhotoRec/TestDisk. Guarda los resultados en otro disco para no sobrescribir datos.",
-            )
+        if scope == "Todo el disco":
+            self.recovery_status.setText("Buscando en papeleras de todos los volumenes accesibles...")
+            self._run_task(scan_recoverable_all_disks, self._recovery_done, self.recovery_query.text())
             return
         if scope == "Carpeta":
             folder = Path(self.recovery_folder.text().strip()).expanduser()
@@ -873,18 +907,6 @@ SysCare evita rutas del sistema y trabaja sobre carpetas del usuario o temporale
             return
         self.recovery_status.setText("Buscando archivos borrados en la papelera...")
         self._run_task(scan_recoverable, self._recovery_done, self.recovery_query.text())
-
-    def _launch_deep_recovery(self) -> None:
-        answer = QMessageBox.question(
-            self,
-            "Recuperacion profunda",
-            "Se abrira PhotoRec/TestDisk en Terminal si esta instalado. Requiere permisos y debes guardar los recuperados en otro disco.\n\nContinuar?",
-        )
-        if answer != QMessageBox.StandardButton.Yes:
-            return
-        ok, message = launch_deep_recovery()
-        self.recovery_status.setText(message)
-        QMessageBox.information(self, "Recuperacion profunda", message)
 
     def _recovery_done(self, files: list[RecoverableFile]) -> None:
         self.recoverable_files = files
@@ -1098,6 +1120,7 @@ def main() -> None:
     app.setApplicationName(__app_name__)
     app.setQuitOnLastWindowClosed(False)
     app.setStyle("Fusion")
+    app.setWindowIcon(QIcon(str(Path(__file__).with_name("assets") / "app_icon.svg")))
     palette = QPalette()
     palette.setColor(QPalette.ColorRole.Window, QColor("#ffffff"))
     palette.setColor(QPalette.ColorRole.WindowText, QColor("#172033"))

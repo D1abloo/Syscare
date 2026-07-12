@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import platform
 from dataclasses import dataclass
 
 
@@ -14,21 +15,28 @@ class PackageManager:
     uninstall: tuple[str, ...]
     list_installed: tuple[str, ...]
     needs_privilege: bool = False
+    platforms: tuple[str, ...] = ("linux", "darwin")
 
 
 MANAGERS = [
-    PackageManager("brew", "Homebrew", ("brew", "search"), ("brew", "install"), ("brew", "uninstall"), ("brew", "list", "--versions")),
-    PackageManager("apt", "APT", ("apt-cache", "search"), ("apt", "install", "-y"), ("apt", "remove", "-y"), ("dpkg-query", "-W", "-f=${Package}\\t${Version}\\n"), True),
-    PackageManager("dnf", "DNF", ("dnf", "search"), ("dnf", "install", "-y"), ("dnf", "remove", "-y"), ("dnf", "list", "installed"), True),
-    PackageManager("pacman", "Pacman", ("pacman", "-Ss"), ("pacman", "-S", "--noconfirm"), ("pacman", "-Rns", "--noconfirm"), ("pacman", "-Q"), True),
-    PackageManager("snap", "Snap", ("snap", "find"), ("snap", "install"), ("snap", "remove"), ("snap", "list"), True),
-    PackageManager("flatpak", "Flatpak", ("flatpak", "search"), ("flatpak", "install", "-y"), ("flatpak", "uninstall", "-y"), ("flatpak", "list", "--app"), False),
+    PackageManager("brew", "Homebrew", ("brew", "search"), ("brew", "install"), ("brew", "uninstall"), ("brew", "list", "--versions"), platforms=("darwin", "linux")),
+    PackageManager("port", "MacPorts", ("port", "search"), ("port", "install"), ("port", "uninstall"), ("port", "installed"), True, ("darwin",)),
+    PackageManager("apt", "APT", ("apt-cache", "search"), ("apt", "install", "-y"), ("apt", "remove", "-y"), ("dpkg-query", "-W", "-f=${Package}\\t${Version}\\n"), True, ("linux",)),
+    PackageManager("dnf", "DNF", ("dnf", "search"), ("dnf", "install", "-y"), ("dnf", "remove", "-y"), ("dnf", "list", "installed"), True, ("linux",)),
+    PackageManager("yum", "YUM", ("yum", "search"), ("yum", "install", "-y"), ("yum", "remove", "-y"), ("yum", "list", "installed"), True, ("linux",)),
+    PackageManager("zypper", "Zypper", ("zypper", "search"), ("zypper", "--non-interactive", "install"), ("zypper", "--non-interactive", "remove"), ("zypper", "search", "--installed-only"), True, ("linux",)),
+    PackageManager("pacman", "Pacman", ("pacman", "-Ss"), ("pacman", "-S", "--noconfirm"), ("pacman", "-Rns", "--noconfirm"), ("pacman", "-Q"), True, ("linux",)),
+    PackageManager("snap", "Snap", ("snap", "find"), ("snap", "install"), ("snap", "remove"), ("snap", "list"), True, ("linux",)),
+    PackageManager("flatpak", "Flatpak", ("flatpak", "search"), ("flatpak", "install", "-y"), ("flatpak", "uninstall", "-y"), ("flatpak", "list", "--app"), False, ("linux",)),
 ]
 
 
 def available_managers() -> list[PackageManager]:
+    system = platform.system().lower()
     available = []
     for manager in MANAGERS:
+        if system not in manager.platforms:
+            continue
         if shutil.which(manager.search[0]) and shutil.which(manager.install[0]):
             available.append(manager)
     return available

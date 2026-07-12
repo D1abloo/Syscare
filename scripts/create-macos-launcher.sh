@@ -63,9 +63,9 @@ cat > "${CONTENTS_DIR}/Info.plist" <<EOF
   <key>CFBundleIdentifier</key>
   <string>local.syscare.app</string>
   <key>CFBundleVersion</key>
-  <string>0.5.0</string>
+  <string>0.6.0</string>
   <key>CFBundleShortVersionString</key>
-  <string>0.5.0</string>
+  <string>0.6.0</string>
   <key>CFBundleExecutable</key>
   <string>syscare</string>
   <key>CFBundleIconFile</key>
