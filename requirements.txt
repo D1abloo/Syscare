@@ -1,0 +1,5 @@
+PySide6>=6.9,<7
+psutil>=6.0
+send2trash>=1.8
+platformdirs>=4.3
+packaging>=24.0

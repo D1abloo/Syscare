@@ -1,0 +1,139 @@
+# SysCare
+
+SysCare es una aplicacion grafica para Linux y macOS orientada a mantenimiento de usuario:
+
+- Limpieza de temporales, caches, logs, papelera local y cookies conocidas.
+- Optimizacion con cache DNS, cache de fuentes, limpieza de paquetes, journal y revision de entradas invalidas.
+- Deteccion de equivalentes Linux/macOS a entradas invalidas del registro: enlaces rotos, `.desktop` sin destino, LaunchAgents obsoletos y archivos grandes.
+- Busqueda y recuperacion de archivos borrados que aun estan en la papelera del usuario.
+- Panel de rendimiento con CPU, memoria, disco, bateria y temperaturas disponibles.
+- Buscador de aplicaciones instaladas.
+- Instalador y desinstalador de paquetes mediante Homebrew, apt, dnf, pacman, snap o flatpak.
+- Desinstalacion de apps `.app` en macOS moviendolas a la papelera.
+- Compresion y descompresion de carpetas/archivos.
+- Comprobacion de actualizaciones desde GitHub Releases, `SYSCARE_REPO_URL` o el remoto Git `origin`.
+- Panel de ayuda integrado.
+
+## Requisitos
+
+- Python 3.10 o superior.
+- Linux o macOS.
+- Dependencias Python definidas en `requirements.txt`.
+- Para instalar/desinstalar paquetes en Linux: un gestor instalado (`apt`, `dnf`, `pacman`, `snap` o `flatpak`) y permisos mediante `pkexec` o `sudo` cuando aplique.
+- Para Homebrew: `brew` instalado.
+
+## Instalacion en Linux
+
+### Ubuntu 22.04/24.04, Debian 12, Linux Mint
+
+```bash
+sudo apt update
+sudo apt install -y python3 python3-venv python3-pip python3-pyqt6 pkexec
+./scripts/install-dev.sh
+./scripts/create-linux-launcher.sh
+```
+
+### Fedora 39/40/41, RHEL compatible
+
+```bash
+sudo dnf install -y python3 python3-pip python3-virtualenv polkit
+./scripts/install-dev.sh
+./scripts/create-linux-launcher.sh
+```
+
+### Arch Linux, Manjaro, EndeavourOS
+
+```bash
+sudo pacman -S --needed python python-pip python-virtualenv polkit
+./scripts/install-dev.sh
+./scripts/create-linux-launcher.sh
+```
+
+### openSUSE Tumbleweed/Leap
+
+```bash
+sudo zypper install python3 python3-pip python3-virtualenv polkit
+./scripts/install-dev.sh
+./scripts/create-linux-launcher.sh
+```
+
+## Instalacion en macOS
+
+Compatible con macOS 13 Ventura, macOS 14 Sonoma y macOS 15 Sequoia si tienes Python 3.10+.
+
+### Con Homebrew
+
+```bash
+brew install python
+./scripts/install-dev.sh
+```
+
+### Sin Homebrew
+
+Instala Python 3 desde <https://www.python.org/downloads/macos/> y ejecuta:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -e .
+```
+
+Para abrirla como app desde Finder puedes usar Automator, Platypus o generar un binario con PyInstaller.
+
+## Instalacion de desarrollo
+
+```bash
+./scripts/install-dev.sh
+```
+
+## Lanzamiento
+
+```bash
+syscare
+```
+
+Tambien puedes lanzarla sin instalar el script:
+
+```bash
+python -m syscare_app
+```
+
+O usar:
+
+```bash
+./scripts/run.sh
+```
+
+## Actualizaciones
+
+Si ejecutas SysCare desde un clon Git, el boton de actualizaciones consulta el remoto `origin`.
+
+Para consultar un repositorio concreto sin Git local:
+
+```bash
+export SYSCARE_REPO_URL="https://github.com/usuario/repositorio"
+syscare
+```
+
+Si el repositorio tiene GitHub Releases, SysCare compara la version local con la ultima release.
+
+## Empaquetado opcional
+
+Para generar un binario local con PyInstaller:
+
+```bash
+source .venv/bin/activate
+pip install pyinstaller
+pyinstaller packaging/syscare.spec
+```
+
+El resultado queda en `dist/SysCare`.
+
+## Seguridad
+
+La limpieza esta limitada a rutas de usuario y temporales conocidos. En directorios compartidos como `/tmp`, SysCare solo procesa elementos propiedad del usuario actual. Las cookies y papelera se marcan como categorias sensibles porque pueden cerrar sesiones o eliminar contenido que no se recupera facilmente.
+
+Linux y macOS no tienen registro de Windows. Por eso SysCare trata como "entradas invalidas" los accesos y metadatos equivalentes: enlaces rotos, launch agents obsoletos, accesos `.desktop` invalidos y referencias a apps eliminadas.
+
+La recuperacion de archivos funciona si el archivo sigue dentro de la papelera. Si fue eliminado de forma permanente, se necesita una herramienta forense externa y el resultado depende del sistema de archivos y de si los bloques fueron sobrescritos.

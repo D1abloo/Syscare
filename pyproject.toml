@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "syscare-app"
+version = "0.2.0"
+description = "Aplicacion grafica para limpieza, rendimiento, paquetes y archivos en Linux y macOS."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "SysCare" }]
+dependencies = [
+  "PySide6>=6.9,<7",
+  "psutil>=6.0",
+  "send2trash>=1.8",
+  "platformdirs>=4.3",
+  "packaging>=24.0"
+]
+
+[project.scripts]
+syscare = "syscare_app.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+syscare_app = ["assets/*.svg"]
