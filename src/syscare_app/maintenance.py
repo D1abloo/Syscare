@@ -210,8 +210,9 @@ def _dns_command() -> tuple[str, ...]:
 def _memory_command() -> tuple[str, ...]:
     if current_platform() == "darwin":
         purge = Path("/usr/sbin/purge")
-        if purge.exists():
-            return (str(purge),)
+        osascript = Path("/usr/bin/osascript")
+        if purge.exists() and osascript.exists():
+            return (str(osascript), "-e", f'do shell script "{purge}" with administrator privileges')
     if current_platform() == "linux" and Path("/proc/sys/vm/drop_caches").exists():
         return ("sh", "-c", "sync && echo 3 > /proc/sys/vm/drop_caches")
     return ()
@@ -229,11 +230,17 @@ def run_maintenance(item: MaintenanceItem) -> tuple[int, str]:
         return 1, "No hay comando disponible para esta tarea en este sistema."
     if item.key == "memory_optimize":
         before = performance_snapshot()
-        code, output = run_process(list(item.command), timeout=120)
+        command = list(item.command)
+        if current_platform() == "linux" and os.geteuid() != 0:
+            if shutil.which("pkexec"):
+                command = ["pkexec", *command]
+            elif shutil.which("sudo"):
+                command = ["sudo", *command]
+        code, output = run_process(command, timeout=120)
         after = performance_snapshot()
         before_used = format_bytes(int(before["memory_used"]))
         after_used = format_bytes(int(after["memory_used"]))
-        detail = output or "Memoria reclamable solicitada al sistema."
+        detail = output or "Memoria reclamable solicitada al sistema con permisos del sistema."
         return code, f"{detail}\n\nMemoria usada antes: {before_used}\nMemoria usada despues: {after_used}"
     command = list(item.command)
     privileged = {"apt_autoremove", "apt_clean", "dnf_clean", "journal_vacuum", "pacman_cache"}

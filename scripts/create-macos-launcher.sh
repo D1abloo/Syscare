@@ -63,9 +63,9 @@ cat > "${CONTENTS_DIR}/Info.plist" <<EOF
   <key>CFBundleIdentifier</key>
   <string>local.syscare.app</string>
   <key>CFBundleVersion</key>
-  <string>0.6.0</string>
+  <string>0.6.1</string>
   <key>CFBundleShortVersionString</key>
-  <string>0.6.0</string>
+  <string>0.6.1</string>
   <key>CFBundleExecutable</key>
   <string>syscare</string>
   <key>CFBundleIconFile</key>
@@ -81,6 +81,7 @@ EOF
 cat > "${MACOS_DIR}/syscare" <<EOF
 #!/usr/bin/env bash
 cd "$APP_DIR"
+export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/opt/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:\$HOME/.local/bin:\$PATH"
 export PYTHONPATH="$APP_DIR/src\${PYTHONPATH:+:\$PYTHONPATH}"
 exec "$APP_DIR/.venv/bin/python" -m syscare_app
 EOF

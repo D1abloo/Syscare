@@ -6,15 +6,15 @@ SysCare es una aplicacion grafica para Linux y macOS orientada a mantenimiento d
 - En macOS limpia tambien Quick Look, diagnosticos, estados guardados y `~/.Trash`.
 - Optimizacion con cache DNS, cache de fuentes, limpieza de paquetes, journal y revision de entradas invalidas.
 - Mantenimiento adicional para pip, npm, Docker, Quick Look, Xcode DerivedData y caches de gestores Linux cuando existan.
-- Optimizacion de memoria RAM mediante la herramienta nativa disponible (`purge` en macOS).
+- Optimizacion de memoria RAM mediante la herramienta nativa disponible (`purge` en macOS con autorizacion del sistema).
 - Deteccion de equivalentes Linux/macOS a entradas invalidas del registro: enlaces rotos, `.desktop` sin destino, LaunchAgents obsoletos y archivos grandes.
-- Busqueda y recuperacion de archivos borrados que aun estan en la papelera del usuario.
-- Recuperacion propia por papelera local, por carpeta original y por papeleras de todos los volumenes montados.
+- Busqueda y recuperacion de archivos borrados que aun estan en papeleras accesibles del usuario o de volumenes montados.
+- Recuperacion propia por papelera local, por carpeta original y por papeleras de discos/volumenes sin servicios de terceros.
 - Panel de rendimiento con CPU, memoria, disco, bateria y temperaturas disponibles.
 - En macOS muestra estado termico mediante `pmset` cuando no hay sensores de temperatura accesibles.
 - Indicador en barra superior/bandeja del sistema con memoria y temperatura, y menu para mostrar/ocultar, limpiar o buscar actualizaciones.
 - Buscador de aplicaciones instaladas.
-- Instalador y desinstalador de paquetes mediante Homebrew, apt, dnf, pacman, snap o flatpak.
+- Instalador y desinstalador de paquetes mediante Homebrew, MacPorts, apt, dnf, yum, zypper, pacman, snap o flatpak.
 - Desinstalacion de apps `.app` en macOS moviendolas a la papelera.
 - Compresion y descompresion de carpetas/archivos.
 - Comprobacion de actualizaciones desde GitHub Releases o ultimo commit de GitHub.
@@ -26,8 +26,8 @@ SysCare es una aplicacion grafica para Linux y macOS orientada a mantenimiento d
 - Python 3.10 o superior.
 - Linux o macOS.
 - Dependencias Python definidas en `requirements.txt`.
-- Para instalar/desinstalar paquetes en Linux: un gestor instalado (`apt`, `dnf`, `pacman`, `snap` o `flatpak`) y permisos mediante `pkexec` o `sudo` cuando aplique.
-- Para Homebrew: `brew` instalado.
+- Para instalar/desinstalar paquetes en Linux: un gestor instalado (`apt`, `dnf`, `yum`, `zypper`, `pacman`, `snap` o `flatpak`) y permisos mediante `pkexec` o `sudo` cuando aplique.
+- Para macOS: Homebrew (`brew`) o MacPorts (`port`) si quieres instalar paquetes desde SysCare.
 
 ## Instalacion en Linux
 

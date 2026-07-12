@@ -7,7 +7,7 @@ import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
 
-from .system import HOME
+from .system import HOME, current_platform
 
 
 @dataclass
@@ -19,17 +19,62 @@ class RecoverableFile:
     size: int
 
 
-def trash_roots(include_volumes: bool = True) -> list[tuple[Path, Path]]:
-    roots = [
-        (HOME / ".local" / "share" / "Trash" / "files", HOME / ".local" / "share" / "Trash" / "info"),
-        (HOME / ".Trash" / "files", HOME / ".Trash" / "info"),
-        (HOME / ".Trash", HOME / ".Trash" / "info"),
+@dataclass(frozen=True)
+class TrashRoot:
+    files: Path
+    info: Path
+    label: str
+
+
+def trash_roots(include_volumes: bool = True) -> list[TrashRoot]:
+    uid = str(os.getuid())
+    candidates = [
+        TrashRoot(HOME / ".local" / "share" / "Trash" / "files", HOME / ".local" / "share" / "Trash" / "info", "Papelera freedesktop del usuario"),
+        TrashRoot(HOME / ".Trash" / "files", HOME / ".Trash" / "info", "Papelera de usuario"),
+        TrashRoot(HOME / ".Trash", HOME / ".Trash" / "info", "Papelera de usuario macOS"),
     ]
-    volumes = Path("/Volumes")
-    if include_volumes and volumes.exists():
-        for volume in volumes.iterdir():
-            roots.append((volume / ".Trashes" / str(os.getuid()), volume / ".Trashes" / str(os.getuid()) / "info"))
-    return [(files, info) for files, info in roots if files.exists()]
+    if include_volumes:
+        candidates.extend(_volume_trash_roots(uid))
+
+    roots: list[TrashRoot] = []
+    seen: set[Path] = set()
+    for root in candidates:
+        try:
+            files = root.files.expanduser().resolve()
+        except OSError:
+            files = root.files.expanduser()
+        if files in seen or not files.exists() or not files.is_dir():
+            continue
+        seen.add(files)
+        roots.append(TrashRoot(files, root.info.expanduser(), root.label))
+    return roots
+
+
+def _volume_trash_roots(uid: str) -> list[TrashRoot]:
+    roots: list[TrashRoot] = []
+    mount_parents = [Path("/Volumes"), Path("/media") / os.getenv("USER", ""), Path("/run/media") / os.getenv("USER", ""), Path("/mnt")]
+    for parent in mount_parents:
+        if not parent.exists():
+            continue
+        try:
+            volumes = list(parent.iterdir())
+        except OSError:
+            continue
+        for volume in volumes:
+            roots.extend(
+                [
+                    TrashRoot(volume / ".Trashes" / uid, volume / ".Trashes" / uid / "info", f"Papelera de {volume.name}"),
+                    TrashRoot(volume / ".Trashes" / uid / "files", volume / ".Trashes" / uid / "info", f"Papelera freedesktop de {volume.name}"),
+                    TrashRoot(volume / f".Trash-{uid}" / "files", volume / f".Trash-{uid}" / "info", f"Papelera de {volume.name}"),
+                    TrashRoot(volume / ".Trash" / uid / "files", volume / ".Trash" / uid / "info", f"Papelera compartida de {volume.name}"),
+                    TrashRoot(volume / ".Trash", volume / ".Trash" / "info", f"Papelera de {volume.name}"),
+                ]
+            )
+    return roots
+
+
+def scan_locations(include_volumes: bool = True) -> list[str]:
+    return [str(root.files) for root in trash_roots(include_volumes=include_volumes)]
 
 
 def scan_recoverable(query: str = "") -> list[RecoverableFile]:
@@ -53,9 +98,9 @@ def scan_recoverable_in_folder(query: str, folder: Path) -> list[RecoverableFile
 
 def _scan_recoverable(needle: str, folder: Path | None, include_volumes: bool) -> list[RecoverableFile]:
     results: list[RecoverableFile] = []
-    for files_root, info_root in trash_roots(include_volumes=include_volumes):
+    for root in trash_roots(include_volumes=include_volumes):
         try:
-            entries = list(files_root.iterdir())
+            entries = list(root.files.iterdir())
         except OSError:
             continue
         for path in entries:
@@ -63,19 +108,27 @@ def _scan_recoverable(needle: str, folder: Path | None, include_volumes: bool) -
                 continue
             if needle and needle not in path.name.lower():
                 continue
-            original, deleted_at = _trash_info(path, info_root)
-            if folder is not None and not _original_inside_folder(original, folder):
+            original, deleted_at = _trash_info(path, root.info)
+            if folder is not None and original and not _original_inside_folder(original, folder):
+                continue
+            if folder is not None and not original and needle and needle not in path.name.lower():
                 continue
             results.append(
                 RecoverableFile(
                     path.name,
                     str(path),
-                    original,
+                    original or _fallback_original_hint(path, root),
                     deleted_at,
                     _size(path),
                 )
             )
     return sorted(results, key=lambda item: item.name.lower())
+
+
+def _fallback_original_hint(path: Path, root: TrashRoot) -> str:
+    if current_platform() == "darwin":
+        return f"Origen no disponible en metadatos de macOS ({root.label})"
+    return f"Origen no disponible ({root.label})"
 
 
 def _original_inside_folder(original_path: str, folder: Path) -> bool:
@@ -121,7 +174,7 @@ def recover_file(file: RecoverableFile, destination: Path | None = None) -> tupl
     if not source.exists():
         return False, "El archivo ya no esta en la papelera."
     target = destination
-    if target is None and file.original_path:
+    if target is None and file.original_path and not file.original_path.startswith("Origen no disponible"):
         target = Path(file.original_path).expanduser()
     if target is None:
         target = HOME / "Recovered" / source.name
@@ -137,9 +190,17 @@ def recover_file(file: RecoverableFile, destination: Path | None = None) -> tupl
             counter += 1
     try:
         shutil.move(str(source), str(target))
-        info = Path(file.trash_path).parent.parent / "info" / f"{source.name}.trashinfo"
-        if info.exists():
-            info.unlink(missing_ok=True)
+        for info in _info_candidates(source):
+            if info.exists():
+                info.unlink(missing_ok=True)
         return True, f"Recuperado en {target}"
     except OSError as exc:
         return False, str(exc)
+
+
+def _info_candidates(source: Path) -> list[Path]:
+    return [
+        source.parent.parent / "info" / f"{source.name}.trashinfo",
+        source.parent / "info" / f"{source.name}.trashinfo",
+        source.parent / f"{source.name}.trashinfo",
+    ]

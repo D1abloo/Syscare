@@ -39,7 +39,7 @@ from . import __app_name__, __version__
 from .archives import compress_folder, extract_archive
 from .maintenance import Issue, MaintenanceItem, maintenance_items, run_maintenance, scan_invalid_entries
 from .packages import PackageManager, available_managers, install, list_installed, search, uninstall
-from .recovery import RecoverableFile, recover_file, scan_recoverable, scan_recoverable_all_disks, scan_recoverable_in_folder
+from .recovery import RecoverableFile, recover_file, scan_locations, scan_recoverable, scan_recoverable_all_disks, scan_recoverable_in_folder
 from .styles import APP_QSS
 from .system import (
     AppEntry,
@@ -163,6 +163,7 @@ class MainWindow(QMainWindow):
         self.metric_timer.timeout.connect(self._refresh_performance)
         self.metric_timer.start(2500)
         self._setup_tray()
+        QApplication.instance().installEventFilter(self)
 
     def _build_header(self) -> QFrame:
         header = QFrame()
@@ -275,9 +276,14 @@ class MainWindow(QMainWindow):
         self._show_window()
 
     def _show_window(self) -> None:
-        self.show()
+        self.showNormal()
         self.raise_()
         self.activateWindow()
+
+    def eventFilter(self, watched, event) -> bool:
+        if event.type() == QEvent.Type.ApplicationActivate and not self.isVisible():
+            QTimer.singleShot(0, self._show_window)
+        return super().eventFilter(watched, event)
 
     def _quit_from_tray(self) -> None:
         self._allow_close = True
@@ -616,6 +622,7 @@ class MainWindow(QMainWindow):
         self.managers = available_managers()
         self._populate_manager_combo()
         self.manager_status.setText(self._manager_status_text())
+        self.package_output.setPlainText(self._manager_status_text())
 
     def _build_archive_page(self) -> QWidget:
         page, layout = self._page_shell("Archivos comprimidos", "Comprime carpetas y descomprime archivos soportados por Python.")
@@ -885,6 +892,10 @@ SysCare evita rutas del sistema y trabaja sobre carpetas del usuario o temporale
         self.recovery_folder_button.setVisible(folder_mode)
         if scope == "Todo el disco":
             self.recovery_status.setText("Se buscaran archivos recuperables en papeleras del usuario y volumenes montados.")
+        elif scope == "Carpeta":
+            self.recovery_status.setText("Se buscara por metadatos de origen. Si macOS no los expone, se mostraran candidatos recuperables.")
+        else:
+            self.recovery_status.setText("Listo para buscar en la papelera.")
 
     def _pick_recovery_folder(self) -> None:
         directory = QFileDialog.getExistingDirectory(self, "Carpeta original a buscar")
@@ -894,7 +905,8 @@ SysCare evita rutas del sistema y trabaja sobre carpetas del usuario o temporale
     def _scan_recovery(self) -> None:
         scope = self.recovery_scope.currentText()
         if scope == "Todo el disco":
-            self.recovery_status.setText("Buscando en papeleras de todos los volumenes accesibles...")
+            locations = scan_locations(include_volumes=True)
+            self.recovery_status.setText(f"Buscando en {len(locations)} ubicaciones de papelera accesibles...")
             self._run_task(scan_recoverable_all_disks, self._recovery_done, self.recovery_query.text())
             return
         if scope == "Carpeta":
@@ -902,10 +914,12 @@ SysCare evita rutas del sistema y trabaja sobre carpetas del usuario o temporale
             if not folder.exists():
                 QMessageBox.information(self, "Recuperar", "Selecciona una carpeta original valida.")
                 return
-            self.recovery_status.setText("Buscando archivos borrados de esa carpeta en la papelera...")
+            locations = scan_locations(include_volumes=True)
+            self.recovery_status.setText(f"Buscando candidatos de esa carpeta en {len(locations)} ubicaciones...")
             self._run_task(scan_recoverable_in_folder, self._recovery_done, self.recovery_query.text(), folder)
             return
-        self.recovery_status.setText("Buscando archivos borrados en la papelera...")
+        locations = scan_locations(include_volumes=False)
+        self.recovery_status.setText(f"Buscando archivos borrados en {len(locations)} ubicaciones locales...")
         self._run_task(scan_recoverable, self._recovery_done, self.recovery_query.text())
 
     def _recovery_done(self, files: list[RecoverableFile]) -> None:

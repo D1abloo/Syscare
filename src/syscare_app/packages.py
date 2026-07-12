@@ -3,7 +3,9 @@ from __future__ import annotations
 import shutil
 import subprocess
 import platform
+import os
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -31,13 +33,39 @@ MANAGERS = [
 ]
 
 
+def command_path() -> str:
+    existing = [part for part in os.environ.get("PATH", "").split(os.pathsep) if part]
+    common = [
+        "/opt/homebrew/bin",
+        "/opt/homebrew/sbin",
+        "/usr/local/bin",
+        "/usr/local/sbin",
+        "/opt/local/bin",
+        "/usr/bin",
+        "/bin",
+        "/usr/sbin",
+        "/sbin",
+        "/snap/bin",
+        str(Path.home() / ".local" / "bin"),
+    ]
+    merged: list[str] = []
+    for path in [*existing, *common]:
+        if path not in merged:
+            merged.append(path)
+    return os.pathsep.join(merged)
+
+
+def _which(command: str) -> str | None:
+    return shutil.which(command, path=command_path())
+
+
 def available_managers() -> list[PackageManager]:
     system = platform.system().lower()
     available = []
     for manager in MANAGERS:
         if system not in manager.platforms:
             continue
-        if shutil.which(manager.search[0]) and shutil.which(manager.install[0]):
+        if _which(manager.search[0]) and _which(manager.install[0]):
             available.append(manager)
     return available
 
@@ -54,7 +82,8 @@ def with_privilege(manager: PackageManager, command: list[str]) -> list[str]:
 
 def run_command(command: list[str], timeout: int = 180) -> tuple[int, str]:
     try:
-        completed = subprocess.run(command, capture_output=True, text=True, timeout=timeout, check=False)
+        env = {**os.environ, "PATH": command_path()}
+        completed = subprocess.run(command, capture_output=True, text=True, timeout=timeout, check=False, env=env)
         output = "\n".join(part for part in (completed.stdout.strip(), completed.stderr.strip()) if part)
         return completed.returncode, output
     except FileNotFoundError:

@@ -491,7 +491,28 @@ def uninstall_app(entry: AppEntry) -> tuple[bool, str]:
 
 def run_process(command: list[str], timeout: int = 120) -> tuple[int, str]:
     try:
-        completed = subprocess.run(command, capture_output=True, text=True, timeout=timeout, check=False)
+        extra_paths = [
+            "/opt/homebrew/bin",
+            "/opt/homebrew/sbin",
+            "/usr/local/bin",
+            "/usr/local/sbin",
+            "/opt/local/bin",
+            "/usr/bin",
+            "/bin",
+            "/usr/sbin",
+            "/sbin",
+            "/snap/bin",
+            str(HOME / ".local" / "bin"),
+        ]
+        env_path = os.pathsep.join(dict.fromkeys([*os.environ.get("PATH", "").split(os.pathsep), *extra_paths]))
+        completed = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+            env={**os.environ, "PATH": env_path},
+        )
         output = "\n".join(part for part in (completed.stdout.strip(), completed.stderr.strip()) if part)
         return completed.returncode, output
     except FileNotFoundError:

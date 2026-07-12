@@ -26,14 +26,7 @@ EOF
   chmod +x ".venv/bin/syscare"
 }
 
-if python - <<'PY' 2>/dev/null
-import setuptools  # noqa: F401
-PY
-then
-  if ! python -m pip install --disable-pip-version-check --no-build-isolation -e .; then
-    install_fallback
-  fi
-else
+if ! python -m pip install --disable-pip-version-check -e .; then
   install_fallback
 fi
 
