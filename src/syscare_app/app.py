@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Callable
 
 from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QThread, QTimer, Signal, Slot
-from PySide6.QtGui import QAction, QCloseEvent, QIcon
+from PySide6.QtGui import QAction, QCloseEvent, QColor, QIcon, QPalette
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -39,7 +39,7 @@ from . import __app_name__, __version__
 from .archives import compress_folder, extract_archive
 from .maintenance import Issue, MaintenanceItem, maintenance_items, run_maintenance, scan_invalid_entries
 from .packages import PackageManager, available_managers, install, list_installed, search, uninstall
-from .recovery import RecoverableFile, recover_file, scan_recoverable
+from .recovery import RecoverableFile, deep_recovery_status, launch_deep_recovery, recover_file, scan_recoverable, scan_recoverable_in_folder
 from .styles import APP_QSS
 from .system import (
     AppEntry,
@@ -275,10 +275,12 @@ class MainWindow(QMainWindow):
 
     def _quit_from_tray(self) -> None:
         self._allow_close = True
+        self._wait_for_threads()
         QApplication.quit()
 
     def closeEvent(self, event: QCloseEvent) -> None:
         if self._allow_close or not getattr(self, "tray_icon", None) or not self.tray_icon.isVisible():
+            self._wait_for_threads()
             event.accept()
             return
         self.hide()
@@ -425,10 +427,13 @@ class MainWindow(QMainWindow):
         self.maintenance_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._populate_maintenance_table()
         task_actions = QHBoxLayout()
+        memory_button = make_button("Optimizar RAM", primary=True)
+        memory_button.clicked.connect(self._run_memory_optimization)
         run_task = make_button("Ejecutar accion", primary=True)
         run_task.clicked.connect(self._run_selected_maintenance)
         scan_issues = make_button("Buscar entradas invalidas")
         scan_issues.clicked.connect(self._scan_invalid_entries)
+        task_actions.addWidget(memory_button)
         task_actions.addWidget(run_task)
         task_actions.addWidget(scan_issues)
         task_actions.addStretch(1)
@@ -463,18 +468,34 @@ class MainWindow(QMainWindow):
 
     def _build_recovery_page(self) -> QWidget:
         page, layout = self._page_shell("Recuperar archivos borrados", "Busca elementos en la papelera y restauralos a su ruta original o a otra carpeta.")
-        recovery_card, recovery_layout = card("Busqueda de recuperables", "Funciona con archivos que siguen presentes en la papelera del usuario.")
+        recovery_card, recovery_layout = card("Busqueda de recuperables", "Papelera y carpeta restauran elementos localizados. Disco completo abre recuperacion profunda con PhotoRec/TestDisk.")
         top_row = QHBoxLayout()
+        self.recovery_scope = QComboBox()
+        self.recovery_scope.addItems(("Papelera", "Carpeta", "Disco completo"))
+        self.recovery_scope.currentTextChanged.connect(self._recovery_scope_changed)
         self.recovery_query = QLineEdit()
         self.recovery_query.setPlaceholderText("Filtrar por nombre...")
+        self.recovery_folder = QLineEdit()
+        self.recovery_folder.setPlaceholderText("Carpeta original a buscar...")
+        self.recovery_folder.setVisible(False)
+        folder_button = make_button("Carpeta")
+        folder_button.clicked.connect(self._pick_recovery_folder)
+        folder_button.setVisible(False)
+        self.recovery_folder_button = folder_button
         scan_button = make_button("Buscar borrados", primary=True)
         scan_button.clicked.connect(self._scan_recovery)
+        deep_button = make_button("Recuperacion profunda")
+        deep_button.clicked.connect(self._launch_deep_recovery)
         restore_button = make_button("Restaurar original")
         restore_button.clicked.connect(self._recover_selected_original)
         restore_to_button = make_button("Restaurar en...")
         restore_to_button.clicked.connect(self._recover_selected_to)
+        top_row.addWidget(self.recovery_scope)
         top_row.addWidget(self.recovery_query, 1)
+        top_row.addWidget(self.recovery_folder, 1)
+        top_row.addWidget(folder_button)
         top_row.addWidget(scan_button)
+        top_row.addWidget(deep_button)
         top_row.addWidget(restore_button)
         top_row.addWidget(restore_to_button)
         recovery_layout.addLayout(top_row)
@@ -683,6 +704,11 @@ SysCare evita rutas del sistema y trabaja sobre carpetas del usuario o temporale
         if thread in self.threads:
             self.threads.remove(thread)
 
+    def _wait_for_threads(self) -> None:
+        for thread in list(self.threads):
+            if thread.isRunning():
+                thread.wait(3000)
+
     @Slot()
     def _refresh_performance(self) -> None:
         data = performance_snapshot()
@@ -779,6 +805,21 @@ SysCare evita rutas del sistema y trabaja sobre carpetas del usuario o temporale
         self.issue_status.setText(f"Ejecutando {item.title}...")
         self._run_task(run_maintenance, self._maintenance_done, item)
 
+    def _run_memory_optimization(self) -> None:
+        item = next((entry for entry in self.maintenance_items if entry.key == "memory_optimize"), None)
+        if not item:
+            QMessageBox.information(self, "Optimizar RAM", "No hay una accion de optimizacion de RAM disponible en este sistema.")
+            return
+        answer = QMessageBox.question(
+            self,
+            "Optimizar RAM",
+            "macOS gestiona la memoria automaticamente. Esta accion solicita liberar caches reclamables.\n\nContinuar?",
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        self.issue_status.setText("Optimizando memoria RAM...")
+        self._run_task(run_maintenance, self._maintenance_done, item)
+
     def _maintenance_done(self, result: tuple[int, str]) -> None:
         code, output = result
         self.issue_status.setText(f"Accion terminada con codigo {code}.")
@@ -798,9 +839,52 @@ SysCare evita rutas del sistema y trabaja sobre carpetas del usuario o temporale
                 self.issue_table.setItem(row, col, QTableWidgetItem(value))
         self.issue_status.setText(f"Analisis completado: {len(issues)} elementos encontrados.")
 
+    def _recovery_scope_changed(self, scope: str) -> None:
+        folder_mode = scope == "Carpeta"
+        self.recovery_folder.setVisible(folder_mode)
+        self.recovery_folder_button.setVisible(folder_mode)
+        if scope == "Disco completo":
+            available, message = deep_recovery_status()
+            self.recovery_status.setText(message if available else f"{message}. La recuperacion completa requiere herramienta externa y permisos.")
+
+    def _pick_recovery_folder(self) -> None:
+        directory = QFileDialog.getExistingDirectory(self, "Carpeta original a buscar")
+        if directory:
+            self.recovery_folder.setText(directory)
+
     def _scan_recovery(self) -> None:
+        scope = self.recovery_scope.currentText()
+        if scope == "Disco completo":
+            available, message = deep_recovery_status()
+            self.recovery_status.setText(message)
+            QMessageBox.information(
+                self,
+                "Recuperacion profunda",
+                f"{message}\n\nPara recuperar archivos borrados de todo un disco usa PhotoRec/TestDisk. Guarda los resultados en otro disco para no sobrescribir datos.",
+            )
+            return
+        if scope == "Carpeta":
+            folder = Path(self.recovery_folder.text().strip()).expanduser()
+            if not folder.exists():
+                QMessageBox.information(self, "Recuperar", "Selecciona una carpeta original valida.")
+                return
+            self.recovery_status.setText("Buscando archivos borrados de esa carpeta en la papelera...")
+            self._run_task(scan_recoverable_in_folder, self._recovery_done, self.recovery_query.text(), folder)
+            return
         self.recovery_status.setText("Buscando archivos borrados en la papelera...")
         self._run_task(scan_recoverable, self._recovery_done, self.recovery_query.text())
+
+    def _launch_deep_recovery(self) -> None:
+        answer = QMessageBox.question(
+            self,
+            "Recuperacion profunda",
+            "Se abrira PhotoRec/TestDisk en Terminal si esta instalado. Requiere permisos y debes guardar los recuperados en otro disco.\n\nContinuar?",
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        ok, message = launch_deep_recovery()
+        self.recovery_status.setText(message)
+        QMessageBox.information(self, "Recuperacion profunda", message)
 
     def _recovery_done(self, files: list[RecoverableFile]) -> None:
         self.recoverable_files = files
@@ -1013,6 +1097,18 @@ def main() -> None:
     app = QApplication(sys.argv)
     app.setApplicationName(__app_name__)
     app.setQuitOnLastWindowClosed(False)
+    app.setStyle("Fusion")
+    palette = QPalette()
+    palette.setColor(QPalette.ColorRole.Window, QColor("#ffffff"))
+    palette.setColor(QPalette.ColorRole.WindowText, QColor("#172033"))
+    palette.setColor(QPalette.ColorRole.Base, QColor("#ffffff"))
+    palette.setColor(QPalette.ColorRole.AlternateBase, QColor("#f7f9fc"))
+    palette.setColor(QPalette.ColorRole.Text, QColor("#172033"))
+    palette.setColor(QPalette.ColorRole.Button, QColor("#ffffff"))
+    palette.setColor(QPalette.ColorRole.ButtonText, QColor("#172033"))
+    palette.setColor(QPalette.ColorRole.Highlight, QColor("#dff7ef"))
+    palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#0f2d25"))
+    app.setPalette(palette)
     app.setStyleSheet(APP_QSS)
     window = MainWindow()
     window.show()

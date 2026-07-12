@@ -3,6 +3,7 @@ from __future__ import annotations
 import configparser
 import os
 import shutil
+import subprocess
 import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
@@ -34,6 +35,19 @@ def trash_roots() -> list[tuple[Path, Path]]:
 
 def scan_recoverable(query: str = "") -> list[RecoverableFile]:
     needle = query.strip().lower()
+    return _scan_recoverable(needle, None)
+
+
+def scan_recoverable_in_folder(query: str, folder: Path) -> list[RecoverableFile]:
+    needle = query.strip().lower()
+    try:
+        folder_resolved = folder.expanduser().resolve()
+    except OSError:
+        folder_resolved = folder.expanduser()
+    return _scan_recoverable(needle, folder_resolved)
+
+
+def _scan_recoverable(needle: str, folder: Path | None) -> list[RecoverableFile]:
     results: list[RecoverableFile] = []
     for files_root, info_root in trash_roots():
         try:
@@ -46,6 +60,8 @@ def scan_recoverable(query: str = "") -> list[RecoverableFile]:
             if needle and needle not in path.name.lower():
                 continue
             original, deleted_at = _trash_info(path, info_root)
+            if folder is not None and not _original_inside_folder(original, folder):
+                continue
             results.append(
                 RecoverableFile(
                     path.name,
@@ -56,6 +72,35 @@ def scan_recoverable(query: str = "") -> list[RecoverableFile]:
                 )
             )
     return sorted(results, key=lambda item: item.name.lower())
+
+
+def _original_inside_folder(original_path: str, folder: Path) -> bool:
+    if not original_path:
+        return False
+    try:
+        original = Path(original_path).expanduser().resolve()
+        return original == folder or original.is_relative_to(folder)
+    except OSError:
+        return False
+
+
+def deep_recovery_status() -> tuple[bool, str]:
+    tool = shutil.which("photorec") or shutil.which("testdisk")
+    if tool:
+        return True, f"Herramienta disponible: {tool}"
+    return False, "PhotoRec/TestDisk no esta instalado. Instala con: brew install testdisk"
+
+
+def launch_deep_recovery() -> tuple[bool, str]:
+    tool = shutil.which("photorec") or shutil.which("testdisk")
+    if not tool:
+        return False, "PhotoRec/TestDisk no esta instalado. Instala con: brew install testdisk"
+    script = f'cd "$HOME"; sudo "{tool}"'
+    if shutil.which("osascript"):
+        subprocess.Popen(["osascript", "-e", f'tell application "Terminal" to do script {script!r}'])
+        return True, "Recuperacion profunda abierta en Terminal. Selecciona el disco y guarda resultados en otro volumen."
+    subprocess.Popen([tool])
+    return True, "Recuperacion profunda iniciada."
 
 
 def _trash_info(path: Path, info_root: Path) -> tuple[str, str]:

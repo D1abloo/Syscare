@@ -11,8 +11,19 @@ QMainWindow, QWidget#Root {
 QWidget {
   color: #172033;
 }
+QDialog, QMessageBox, QFileDialog {
+  background: #ffffff;
+  color: #172033;
+}
 QLabel {
   color: #172033;
+}
+QMessageBox QLabel {
+  color: #172033;
+  background: transparent;
+}
+QMessageBox QPushButton, QDialog QPushButton, QFileDialog QPushButton {
+  min-width: 88px;
 }
 QFrame#Header {
   background: #ffffff;

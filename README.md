@@ -6,8 +6,10 @@ SysCare es una aplicacion grafica para Linux y macOS orientada a mantenimiento d
 - En macOS limpia tambien Quick Look, diagnosticos, estados guardados y `~/.Trash`.
 - Optimizacion con cache DNS, cache de fuentes, limpieza de paquetes, journal y revision de entradas invalidas.
 - Mantenimiento adicional para pip, npm, Docker, Quick Look, Xcode DerivedData y caches de gestores Linux cuando existan.
+- Optimizacion de memoria RAM mediante la herramienta nativa disponible (`purge` en macOS).
 - Deteccion de equivalentes Linux/macOS a entradas invalidas del registro: enlaces rotos, `.desktop` sin destino, LaunchAgents obsoletos y archivos grandes.
 - Busqueda y recuperacion de archivos borrados que aun estan en la papelera del usuario.
+- Recuperacion por papelera, por carpeta original y recuperacion profunda asistida de disco completo con PhotoRec/TestDisk.
 - Panel de rendimiento con CPU, memoria, disco, bateria y temperaturas disponibles.
 - En macOS muestra estado termico mediante `pmset` cuando no hay sensores de temperatura accesibles.
 - Indicador en barra superior/bandeja del sistema con memoria y temperatura, y menu para mostrar/ocultar, limpiar o buscar actualizaciones.
@@ -149,3 +151,10 @@ La limpieza esta limitada a rutas de usuario y temporales conocidos. En director
 Linux y macOS no tienen registro de Windows. Por eso SysCare trata como "entradas invalidas" los accesos y metadatos equivalentes: enlaces rotos, launch agents obsoletos, accesos `.desktop` invalidos y referencias a apps eliminadas.
 
 La recuperacion de archivos funciona si el archivo sigue dentro de la papelera. Si fue eliminado de forma permanente, se necesita una herramienta forense externa y el resultado depende del sistema de archivos y de si los bloques fueron sobrescritos.
+Para recuperacion profunda de disco completo en macOS instala PhotoRec/TestDisk:
+
+```bash
+brew install testdisk
+```
+
+Guarda los archivos recuperados en otro disco para evitar sobrescribir datos borrados.

@@ -6,7 +6,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from .system import HOME, current_platform, format_bytes, run_process
+from .system import HOME, current_platform, format_bytes, performance_snapshot, run_process
 
 
 @dataclass(frozen=True)
@@ -29,6 +29,14 @@ class Issue:
 
 def maintenance_items() -> list[MaintenanceItem]:
     items = [
+        MaintenanceItem(
+            "memory_optimize",
+            "Optimizar memoria RAM",
+            "Rendimiento",
+            "Libera memoria inactiva y caches reclamables del sistema. macOS gestiona la RAM automaticamente; usalo si una app pesada acaba de cerrarse.",
+            _memory_command(),
+            risky=True,
+        ),
         MaintenanceItem(
             "dns",
             "Vaciar cache DNS",
@@ -199,6 +207,16 @@ def _dns_command() -> tuple[str, ...]:
     return ()
 
 
+def _memory_command() -> tuple[str, ...]:
+    if current_platform() == "darwin":
+        purge = Path("/usr/sbin/purge")
+        if purge.exists():
+            return (str(purge),)
+    if current_platform() == "linux" and Path("/proc/sys/vm/drop_caches").exists():
+        return ("sh", "-c", "sync && echo 3 > /proc/sys/vm/drop_caches")
+    return ()
+
+
 def _launchservices_command() -> tuple[str, ...]:
     command = Path("/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister")
     if command.exists():
@@ -209,6 +227,14 @@ def _launchservices_command() -> tuple[str, ...]:
 def run_maintenance(item: MaintenanceItem) -> tuple[int, str]:
     if not item.command:
         return 1, "No hay comando disponible para esta tarea en este sistema."
+    if item.key == "memory_optimize":
+        before = performance_snapshot()
+        code, output = run_process(list(item.command), timeout=120)
+        after = performance_snapshot()
+        before_used = format_bytes(int(before["memory_used"]))
+        after_used = format_bytes(int(after["memory_used"]))
+        detail = output or "Memoria reclamable solicitada al sistema."
+        return code, f"{detail}\n\nMemoria usada antes: {before_used}\nMemoria usada despues: {after_used}"
     command = list(item.command)
     privileged = {"apt_autoremove", "apt_clean", "dnf_clean", "journal_vacuum", "pacman_cache"}
     if item.key in privileged and os.geteuid() != 0:
