@@ -4,15 +4,18 @@ SysCare es una aplicacion grafica para Linux y macOS orientada a mantenimiento d
 
 - Limpieza de temporales, caches, logs, papelera local y cookies conocidas.
 - Optimizacion con cache DNS, cache de fuentes, limpieza de paquetes, journal y revision de entradas invalidas.
+- Mantenimiento adicional para pip, npm, Docker, Quick Look, Xcode DerivedData y caches de gestores Linux cuando existan.
 - Deteccion de equivalentes Linux/macOS a entradas invalidas del registro: enlaces rotos, `.desktop` sin destino, LaunchAgents obsoletos y archivos grandes.
 - Busqueda y recuperacion de archivos borrados que aun estan en la papelera del usuario.
 - Panel de rendimiento con CPU, memoria, disco, bateria y temperaturas disponibles.
+- Indicador en barra superior/bandeja del sistema con memoria y temperatura, y menu para mostrar/ocultar, limpiar o buscar actualizaciones.
 - Buscador de aplicaciones instaladas.
 - Instalador y desinstalador de paquetes mediante Homebrew, apt, dnf, pacman, snap o flatpak.
 - Desinstalacion de apps `.app` en macOS moviendolas a la papelera.
 - Compresion y descompresion de carpetas/archivos.
 - Comprobacion de actualizaciones desde GitHub Releases, `SYSCARE_REPO_URL` o el remoto Git `origin`.
-- Panel de ayuda integrado.
+- Panel de ayuda integrado con estado de actualizaciones.
+- Interfaz clara profesional con navegacion en header y animacion de apertura.
 
 ## Requisitos
 
@@ -73,10 +76,7 @@ brew install python
 Instala Python 3 desde <https://www.python.org/downloads/macos/> y ejecuta:
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip
-pip install -e .
+./scripts/install-dev.sh
 ```
 
 Para abrirla como app desde Finder puedes usar Automator, Platypus o generar un binario con PyInstaller.
@@ -86,6 +86,8 @@ Para abrirla como app desde Finder puedes usar Automator, Platypus o generar un 
 ```bash
 ./scripts/install-dev.sh
 ```
+
+El instalador puede ejecutarse desde la raiz del proyecto o desde `scripts/`. Si el entorno no puede instalar el paquete editable por falta de `setuptools` o red, crea un enlace local de desarrollo para que `syscare` siga funcionando con las dependencias presentes.
 
 ## Lanzamiento
 
@@ -117,6 +119,8 @@ syscare
 ```
 
 Si el repositorio tiene GitHub Releases, SysCare compara la version local con la ultima release.
+
+El panel Ayuda muestra si hay actualizaciones pendientes. Si se instala una actualizacion mediante Git, reinicia SysCare para ver los cambios nuevos.
 
 ## Empaquetado opcional
 

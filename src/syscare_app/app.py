@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Callable
 
 from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QThread, QTimer, Signal, Slot
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QAction, QCloseEvent, QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -21,11 +21,13 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QProgressBar,
     QPushButton,
     QSizePolicy,
     QStackedWidget,
+    QSystemTrayIcon,
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
@@ -109,10 +111,13 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(f"{__app_name__} {__version__}")
-        icon_path = Path(__file__).with_name("assets") / "app_icon.svg"
-        self.setWindowIcon(QIcon(str(icon_path)))
-        self.resize(1180, 760)
+        self.icon_path = Path(__file__).with_name("assets") / "app_icon.svg"
+        self.app_icon = QIcon(str(self.icon_path))
+        self.setWindowIcon(self.app_icon)
+        self.resize(1280, 820)
         self.threads: list[TaskThread] = []
+        self._allow_close = False
+        self._tray_notice_shown = False
         self.targets = cleanup_targets()
         self.cleanup_rows: dict[str, int] = {}
         self.cleanup_reports: dict[str, CleanupReport] = {}
@@ -124,11 +129,11 @@ class MainWindow(QMainWindow):
         self.root = QWidget()
         self.root.setObjectName("Root")
         self.setCentralWidget(self.root)
-        root_layout = QHBoxLayout(self.root)
+        root_layout = QVBoxLayout(self.root)
         root_layout.setContentsMargins(0, 0, 0, 0)
         root_layout.setSpacing(0)
 
-        root_layout.addWidget(self._build_sidebar())
+        root_layout.addWidget(self._build_header())
         self.stack = QStackedWidget()
         root_layout.addWidget(self.stack, 1)
 
@@ -156,27 +161,28 @@ class MainWindow(QMainWindow):
         self.metric_timer = QTimer(self)
         self.metric_timer.timeout.connect(self._refresh_performance)
         self.metric_timer.start(2500)
+        self._setup_tray()
 
-    def _build_sidebar(self) -> QFrame:
-        sidebar = QFrame()
-        sidebar.setObjectName("Sidebar")
-        sidebar.setFixedWidth(238)
-        layout = QVBoxLayout(sidebar)
-        layout.setContentsMargins(18, 18, 18, 18)
-        layout.setSpacing(10)
+    def _build_header(self) -> QFrame:
+        header = QFrame()
+        header.setObjectName("Header")
+        layout = QHBoxLayout(header)
+        layout.setContentsMargins(22, 14, 22, 14)
+        layout.setSpacing(14)
 
         brand_row = QHBoxLayout()
         logo = QLabel("S")
         logo.setObjectName("LogoMark")
         logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        logo.setFixedSize(42, 42)
+        logo.setFixedSize(40, 40)
         brand_text = QVBoxLayout()
+        brand_text.setSpacing(1)
         brand_text.addWidget(make_label("SysCare", "AppTitle"))
         brand_text.addWidget(make_label("Linux y macOS", muted=True))
         brand_row.addWidget(logo)
-        brand_row.addLayout(brand_text, 1)
+        brand_row.addLayout(brand_text)
         layout.addLayout(brand_row)
-        layout.addSpacing(14)
+        layout.addSpacing(12)
 
         self.nav_buttons: list[QPushButton] = []
         for index, text in enumerate(("Panel", "Limpieza", "Optimizar", "Recuperar", "Aplicaciones", "Archivos", "Ayuda")):
@@ -189,9 +195,14 @@ class MainWindow(QMainWindow):
             layout.addWidget(button)
 
         layout.addStretch(1)
-        version = make_label(f"Version {__version__}", muted=True)
+        self.header_metric = make_label("Memoria -- · Temp --", muted=True)
+        self.header_metric.setObjectName("HeaderMetric")
+        self.header_metric.setWordWrap(False)
+        self.header_metric.setMinimumWidth(260)
+        layout.addWidget(self.header_metric)
+        version = make_label(f"v{__version__}", muted=True)
         layout.addWidget(version)
-        return sidebar
+        return header
 
     def _page_shell(self, title: str, subtitle: str) -> tuple[QWidget, QVBoxLayout]:
         page = QWidget()
@@ -201,6 +212,82 @@ class MainWindow(QMainWindow):
         layout.addWidget(make_label(title, "PageTitle"))
         layout.addWidget(make_label(subtitle, muted=True))
         return page, layout
+
+    def start_open_animation(self) -> None:
+        self.setWindowOpacity(0.0)
+        self.open_animation = QPropertyAnimation(self, b"windowOpacity", self)
+        self.open_animation.setDuration(420)
+        self.open_animation.setStartValue(0.0)
+        self.open_animation.setEndValue(1.0)
+        self.open_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self.open_animation.start()
+
+    def _setup_tray(self) -> None:
+        self.tray_icon = None
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            return
+        self.tray_menu = QMenu(self)
+        self.tray_memory_action = QAction("Memoria: calculando...", self)
+        self.tray_memory_action.setEnabled(False)
+        self.tray_temp_action = QAction("Temperatura: calculando...", self)
+        self.tray_temp_action.setEnabled(False)
+        show_action = QAction("Mostrar/Ocultar SysCare", self)
+        show_action.triggered.connect(self._toggle_window)
+        scan_action = QAction("Escanear limpieza", self)
+        scan_action.triggered.connect(lambda: (self._show_window(), self._switch_page(1), self._scan_cleanup()))
+        update_action = QAction("Buscar actualizaciones", self)
+        update_action.triggered.connect(lambda: (self._show_window(), self._check_updates()))
+        quit_action = QAction("Salir", self)
+        quit_action.triggered.connect(self._quit_from_tray)
+
+        self.tray_menu.addAction(self.tray_memory_action)
+        self.tray_menu.addAction(self.tray_temp_action)
+        self.tray_menu.addSeparator()
+        self.tray_menu.addAction(show_action)
+        self.tray_menu.addAction(scan_action)
+        self.tray_menu.addAction(update_action)
+        self.tray_menu.addSeparator()
+        self.tray_menu.addAction(quit_action)
+
+        self.tray_icon = QSystemTrayIcon(self.app_icon, self)
+        self.tray_icon.setContextMenu(self.tray_menu)
+        self.tray_icon.setToolTip("SysCare: memoria y temperatura")
+        self.tray_icon.activated.connect(self._tray_activated)
+        self.tray_icon.show()
+
+    def _tray_activated(self, reason) -> None:
+        if reason in (QSystemTrayIcon.ActivationReason.Trigger, QSystemTrayIcon.ActivationReason.DoubleClick):
+            self._toggle_window()
+
+    def _toggle_window(self) -> None:
+        if self.isVisible() and not self.isMinimized():
+            self.hide()
+            return
+        self._show_window()
+
+    def _show_window(self) -> None:
+        self.show()
+        self.raise_()
+        self.activateWindow()
+
+    def _quit_from_tray(self) -> None:
+        self._allow_close = True
+        QApplication.quit()
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        if self._allow_close or not getattr(self, "tray_icon", None) or not self.tray_icon.isVisible():
+            event.accept()
+            return
+        self.hide()
+        if not self._tray_notice_shown:
+            self.tray_icon.showMessage(
+                "SysCare sigue activo",
+                "La app queda abierta en la barra superior o bandeja del sistema. Usa Salir para cerrarla.",
+                QSystemTrayIcon.MessageIcon.Information,
+                3500,
+            )
+            self._tray_notice_shown = True
+        event.ignore()
 
     def _build_dashboard_page(self) -> QWidget:
         page, layout = self._page_shell("Panel del equipo", "Rendimiento, temperatura y estado general en tiempo real.")
@@ -515,6 +602,17 @@ class MainWindow(QMainWindow):
 
     def _build_help_page(self) -> QWidget:
         page, layout = self._page_shell("Ayuda", "Instalacion, lanzamiento y uso responsable.")
+        update_card, update_layout = card("Estado de actualizaciones", "Comprueba si hay cambios nuevos en el repositorio configurado.")
+        update_grid = QHBoxLayout()
+        self.help_update_status = make_label(f"Version instalada: {__version__}. Estado: no comprobado.", muted=True)
+        help_update_button = make_button("Comprobar ahora", primary=True)
+        help_update_button.clicked.connect(self._check_updates)
+        update_grid.addWidget(self.help_update_status, 1)
+        update_grid.addWidget(help_update_button)
+        update_layout.addLayout(update_grid)
+        update_layout.addWidget(make_label("Si se instala una actualizacion, reinicia SysCare para cargar los nuevos cambios.", muted=True))
+        layout.addWidget(update_card)
+
         help_text = QTextEdit()
         help_text.setReadOnly(True)
         help_text.setMarkdown(
@@ -597,8 +695,17 @@ SysCare evita rutas del sistema y trabaja sobre carpetas del usuario o temporale
         self.health_score.setText(str(score))
         self.health_score.setToolTip("Estimacion visual basada en CPU, memoria y disco.")
 
-        self.temp_list.clear()
         temps = temperature_snapshot()
+        temp_values = [value for _, value in temps if value is not None]
+        temp_summary = f"{temp_values[0]:.1f} C" if temp_values else "N/D"
+        memory_summary = f"{data['memory_percent']:.0f}% · {format_bytes(int(data['memory_used']))}"
+        self.header_metric.setText(f"Memoria {memory_summary} · Temp {temp_summary}")
+        if getattr(self, "tray_icon", None):
+            self.tray_memory_action.setText(f"Memoria: {memory_summary} de {format_bytes(int(data['memory_total']))}")
+            self.tray_temp_action.setText(f"Temperatura: {temp_summary}")
+            self.tray_icon.setToolTip(f"SysCare\nMemoria: {memory_summary}\nTemperatura: {temp_summary}")
+
+        self.temp_list.clear()
         if not temps:
             self.temp_list.addItem("No hay sensores de temperatura expuestos por el sistema.")
         for name, value in temps[:24]:
@@ -871,10 +978,15 @@ SysCare evita rutas del sistema y trabaja sobre carpetas del usuario o temporale
 
     def _check_updates(self) -> None:
         self.update_status.setText("Consultando repositorio...")
+        if hasattr(self, "help_update_status"):
+            self.help_update_status.setText("Consultando repositorio...")
         self._run_task(check_updates, self._updates_done, __version__, ROOT)
 
     def _updates_done(self, info) -> None:
         self.update_status.setText(info.message)
+        if hasattr(self, "help_update_status"):
+            state = "Actualizacion disponible" if info.available else "Sin actualizaciones pendientes"
+            self.help_update_status.setText(f"Version instalada: {__version__}. {state}. {info.message}")
         if not info.available:
             QMessageBox.information(self, "Actualizaciones", info.message)
             return
@@ -888,13 +1000,18 @@ SysCare evita rutas del sistema y trabaja sobre carpetas del usuario o temporale
 
     def _git_update_done(self, result: tuple[bool, str]) -> None:
         ok, message = result
-        QMessageBox.information(self, "Actualizaciones", message if message else ("Actualizado." if ok else "No se pudo actualizar."))
+        suffix = "\n\nReinicia SysCare para ver los nuevos cambios." if ok else ""
+        if hasattr(self, "help_update_status"):
+            self.help_update_status.setText("Actualizacion instalada. Reinicia SysCare para cargar los cambios." if ok else "No se pudo instalar la actualizacion.")
+        QMessageBox.information(self, "Actualizaciones", (message if message else ("Actualizado." if ok else "No se pudo actualizar.")) + suffix)
 
 
 def main() -> None:
     app = QApplication(sys.argv)
     app.setApplicationName(__app_name__)
+    app.setQuitOnLastWindowClosed(False)
     app.setStyleSheet(APP_QSS)
     window = MainWindow()
     window.show()
+    window.start_open_animation()
     sys.exit(app.exec())

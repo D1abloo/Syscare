@@ -1,9 +1,10 @@
-.venv/
+**/.venv/
 __pycache__/
 *.py[cod]
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.pip-cache/
 build/
 dist/
 *.egg-info/

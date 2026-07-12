@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -42,10 +43,47 @@ def maintenance_items() -> list[MaintenanceItem]:
             "Actualiza la cache de fuentes si hay errores visuales o tipografias que no cargan.",
             ("fc-cache", "-f"),
         ),
+        MaintenanceItem(
+            "pip_cache",
+            "Limpiar cache de pip",
+            "Desarrollo",
+            "Elimina paquetes descargados cacheados por pip para liberar espacio.",
+            (sys.executable, "-m", "pip", "cache", "purge"),
+        ),
+        MaintenanceItem(
+            "npm_cache",
+            "Verificar cache de npm",
+            "Desarrollo",
+            "Repara y compacta la cache de npm si Node.js esta instalado.",
+            ("npm", "cache", "verify"),
+        ),
+        MaintenanceItem(
+            "docker_prune",
+            "Limpiar Docker",
+            "Contenedores",
+            "Elimina contenedores parados, redes sin uso, imagenes colgantes y cache de build.",
+            ("docker", "system", "prune", "-f"),
+            risky=True,
+        ),
     ]
     if current_platform() == "darwin":
         items.extend(
             [
+                MaintenanceItem(
+                    "quicklook",
+                    "Reiniciar Quick Look",
+                    "macOS",
+                    "Limpia y reinicia la cache de previsualizaciones de macOS.",
+                    ("qlmanage", "-r", "cache"),
+                ),
+                MaintenanceItem(
+                    "xcode_derived",
+                    "Limpiar DerivedData de Xcode",
+                    "Desarrollo",
+                    "Elimina builds temporales de Xcode en ~/Library/Developer/Xcode/DerivedData.",
+                    ("rm", "-rf", str(HOME / "Library" / "Developer" / "Xcode" / "DerivedData")),
+                    risky=True,
+                ),
                 MaintenanceItem(
                     "brew_cleanup",
                     "Limpiar Homebrew",
@@ -72,6 +110,30 @@ def maintenance_items() -> list[MaintenanceItem]:
                     "Paquetes",
                     "Elimina dependencias instaladas automaticamente que ya no se usan.",
                     ("apt", "autoremove", "-y"),
+                    risky=True,
+                ),
+                MaintenanceItem(
+                    "apt_clean",
+                    "APT clean",
+                    "Paquetes",
+                    "Limpia paquetes descargados en la cache local de APT.",
+                    ("apt", "clean"),
+                    risky=True,
+                ),
+                MaintenanceItem(
+                    "dnf_clean",
+                    "DNF clean",
+                    "Paquetes",
+                    "Limpia metadata y paquetes cacheados por DNF.",
+                    ("dnf", "clean", "all"),
+                    risky=True,
+                ),
+                MaintenanceItem(
+                    "pacman_cache",
+                    "Pacman cache",
+                    "Paquetes",
+                    "Reduce la cache de paquetes de Pacman si paccache esta instalado.",
+                    ("paccache", "-r"),
                     risky=True,
                 ),
                 MaintenanceItem(
@@ -109,7 +171,8 @@ def run_maintenance(item: MaintenanceItem) -> tuple[int, str]:
     if not item.command:
         return 1, "No hay comando disponible para esta tarea en este sistema."
     command = list(item.command)
-    if item.key in {"apt_autoremove", "journal_vacuum"} and os.geteuid() != 0:
+    privileged = {"apt_autoremove", "apt_clean", "dnf_clean", "journal_vacuum", "pacman_cache"}
+    if item.key in privileged and os.geteuid() != 0:
         if shutil.which("pkexec"):
             command = ["pkexec", *command]
         elif shutil.which("sudo"):
