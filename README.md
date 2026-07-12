@@ -80,6 +80,12 @@ Instala Python 3 desde <https://www.python.org/downloads/macos/> y ejecuta:
 ```
 
 Para abrirla como app desde Finder puedes usar Automator, Platypus o generar un binario con PyInstaller.
+Tambien puedes crear un lanzador local en `~/Applications`:
+
+```bash
+./scripts/create-macos-launcher.sh
+open ~/Applications/SysCare.app
+```
 
 ## Instalacion de desarrollo
 
