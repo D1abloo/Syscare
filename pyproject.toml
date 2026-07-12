@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "syscare-app"
-version = "0.6.1"
+version = "0.6.2"
 description = "Aplicacion grafica para limpieza, rendimiento, paquetes y archivos en Linux y macOS."
 readme = "README.md"
 requires-python = ">=3.10"

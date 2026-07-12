@@ -39,7 +39,7 @@ from . import __app_name__, __version__
 from .archives import compress_folder, extract_archive
 from .maintenance import Issue, MaintenanceItem, maintenance_items, run_maintenance, scan_invalid_entries
 from .packages import PackageManager, available_managers, install, list_installed, search, uninstall
-from .recovery import RecoverableFile, recover_file, scan_locations, scan_recoverable, scan_recoverable_all_disks, scan_recoverable_in_folder
+from .recovery import RecoverableFile, RecoveryScanReport, recover_file, scan_locations, scan_recoverable_report
 from .styles import APP_QSS
 from .system import (
     AppEntry,
@@ -126,6 +126,7 @@ class MainWindow(QMainWindow):
         self.managers = available_managers()
         self.maintenance_items = maintenance_items()
         self.recoverable_files: list[RecoverableFile] = []
+        self.package_results: list[str] = []
 
         self.root = QWidget()
         self.root.setObjectName("Root")
@@ -492,8 +493,8 @@ class MainWindow(QMainWindow):
                 self.maintenance_table.setItem(row, col, table_item)
 
     def _build_recovery_page(self) -> QWidget:
-        page, layout = self._page_shell("Recuperar archivos borrados", "Busca elementos en la papelera y restauralos a su ruta original o a otra carpeta.")
-        recovery_card, recovery_layout = card("Busqueda de recuperables", "Servicio propio: busca en la papelera local, carpetas originales y papeleras de volumenes montados.")
+        page, layout = self._page_shell("Recuperar archivos borrados", "Busca elementos en la papelera, discos montados o un repositorio/carpeta y restauralos.")
+        recovery_card, recovery_layout = card("Busqueda de recuperables", "Servicio propio: busca en la papelera local, repositorios/carpetas y papeleras de volumenes montados.")
         top_row = QHBoxLayout()
         self.recovery_scope = QComboBox()
         self.recovery_scope.addItems(("Papelera", "Carpeta", "Todo el disco"))
@@ -501,9 +502,9 @@ class MainWindow(QMainWindow):
         self.recovery_query = QLineEdit()
         self.recovery_query.setPlaceholderText("Filtrar por nombre...")
         self.recovery_folder = QLineEdit()
-        self.recovery_folder.setPlaceholderText("Carpeta original a buscar...")
+        self.recovery_folder.setPlaceholderText("Carpeta o repositorio a escanear...")
         self.recovery_folder.setVisible(False)
-        folder_button = make_button("Carpeta")
+        folder_button = make_button("Elegir")
         folder_button.clicked.connect(self._pick_recovery_folder)
         folder_button.setVisible(False)
         self.recovery_folder_button = folder_button
@@ -595,10 +596,20 @@ class MainWindow(QMainWindow):
         action_row.addWidget(list_button)
         package_layout.addLayout(action_row)
 
+        self.package_table = QTableWidget(0, 3)
+        self.package_table.setHorizontalHeaderLabels(("Paquete", "Gestor", "Detalle"))
+        self.package_table.verticalHeader().setVisible(False)
+        self.package_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.package_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        self.package_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.package_table.itemSelectionChanged.connect(self._package_result_selected)
+        package_layout.addWidget(self.package_table, 1)
+
         self.package_output = QTextEdit()
         self.package_output.setReadOnly(True)
         self.package_output.setPlaceholderText("Los resultados apareceran aqui.")
-        package_layout.addWidget(self.package_output, 1)
+        self.package_output.setMaximumHeight(150)
+        package_layout.addWidget(self.package_output)
         grid.addWidget(package_card, 0, 1)
 
         layout.addLayout(grid, 1)
@@ -893,12 +904,12 @@ SysCare evita rutas del sistema y trabaja sobre carpetas del usuario o temporale
         if scope == "Todo el disco":
             self.recovery_status.setText("Se buscaran archivos recuperables en papeleras del usuario y volumenes montados.")
         elif scope == "Carpeta":
-            self.recovery_status.setText("Se buscara por metadatos de origen. Si macOS no los expone, se mostraran candidatos recuperables.")
+            self.recovery_status.setText("Se escaneara la carpeta/repositorio seleccionado y tambien los metadatos de papelera disponibles.")
         else:
             self.recovery_status.setText("Listo para buscar en la papelera.")
 
     def _pick_recovery_folder(self) -> None:
-        directory = QFileDialog.getExistingDirectory(self, "Carpeta original a buscar")
+        directory = QFileDialog.getExistingDirectory(self, "Carpeta o repositorio a escanear")
         if directory:
             self.recovery_folder.setText(directory)
 
@@ -907,7 +918,7 @@ SysCare evita rutas del sistema y trabaja sobre carpetas del usuario o temporale
         if scope == "Todo el disco":
             locations = scan_locations(include_volumes=True)
             self.recovery_status.setText(f"Buscando en {len(locations)} ubicaciones de papelera accesibles...")
-            self._run_task(scan_recoverable_all_disks, self._recovery_done, self.recovery_query.text())
+            self._run_task(scan_recoverable_report, self._recovery_done, self.recovery_query.text(), None, True)
             return
         if scope == "Carpeta":
             folder = Path(self.recovery_folder.text().strip()).expanduser()
@@ -915,14 +926,22 @@ SysCare evita rutas del sistema y trabaja sobre carpetas del usuario o temporale
                 QMessageBox.information(self, "Recuperar", "Selecciona una carpeta original valida.")
                 return
             locations = scan_locations(include_volumes=True)
-            self.recovery_status.setText(f"Buscando candidatos de esa carpeta en {len(locations)} ubicaciones...")
-            self._run_task(scan_recoverable_in_folder, self._recovery_done, self.recovery_query.text(), folder)
+            self.recovery_status.setText(f"Buscando candidatos en la carpeta y en {len(locations)} ubicaciones de papelera...")
+            self._run_task(scan_recoverable_report, self._recovery_done, self.recovery_query.text(), folder, True)
             return
         locations = scan_locations(include_volumes=False)
         self.recovery_status.setText(f"Buscando archivos borrados en {len(locations)} ubicaciones locales...")
-        self._run_task(scan_recoverable, self._recovery_done, self.recovery_query.text())
+        self._run_task(scan_recoverable_report, self._recovery_done, self.recovery_query.text(), None, False)
 
-    def _recovery_done(self, files: list[RecoverableFile]) -> None:
+    def _recovery_done(self, report: RecoveryScanReport | list[RecoverableFile]) -> None:
+        if isinstance(report, RecoveryScanReport):
+            files = report.files
+            locations = report.locations
+            errors = report.errors
+        else:
+            files = report
+            locations = []
+            errors = []
         self.recoverable_files = files
         self.recovery_table.setRowCount(0)
         for file in files:
@@ -933,7 +952,14 @@ SysCare evita rutas del sistema y trabaja sobre carpetas del usuario o temporale
                 item = QTableWidgetItem(value)
                 item.setData(Qt.ItemDataRole.UserRole, file)
                 self.recovery_table.setItem(row, col, item)
-        self.recovery_status.setText(f"Encontrados {len(files)} elementos recuperables.")
+        detail = f"Encontrados {len(files)} elementos recuperables."
+        if locations:
+            detail += f" Rutas escaneadas: {len(locations)}."
+        if errors:
+            detail += f" Avisos: {errors[0]}"
+            if len(errors) > 1:
+                detail += f" (+{len(errors) - 1} mas)"
+        self.recovery_status.setText(detail)
 
     def _selected_recoverable(self) -> RecoverableFile | None:
         row = self.recovery_table.currentRow()
@@ -1031,8 +1057,9 @@ SysCare evita rutas del sistema y trabaja sobre carpetas del usuario o temporale
         if not values:
             return
         manager, query = values
+        self.package_table.setRowCount(0)
         self.package_output.setPlainText("Buscando...")
-        self._run_task(search, self._package_output_done, manager, query)
+        self._run_task(search, lambda result, m=manager: self._package_search_done(m, result), manager, query)
 
     def _list_packages(self) -> None:
         manager = self._current_manager()
@@ -1047,7 +1074,8 @@ SysCare evita rutas del sistema y trabaja sobre carpetas del usuario o temporale
         if not values:
             return
         manager, package_name = values
-        answer = QMessageBox.question(self, "Instalar", f"Instalar {package_name} con {manager.name}?")
+        preview = self._selected_package_detail(package_name)
+        answer = QMessageBox.question(self, "Instalar", f"Instalar {package_name} con {manager.name}?\n\nVista previa:\n{preview}")
         if answer == QMessageBox.StandardButton.Yes:
             self.package_output.setPlainText("Instalando...")
             self._run_task(install, self._package_output_done, manager, package_name)
@@ -1065,6 +1093,72 @@ SysCare evita rutas del sistema y trabaja sobre carpetas del usuario o temporale
     def _package_output_done(self, result: tuple[int, str]) -> None:
         code, output = result
         self.package_output.setPlainText(f"Codigo: {code}\n\n{output or 'Sin salida.'}")
+
+    def _package_search_done(self, manager: PackageManager, result: tuple[int, str]) -> None:
+        code, output = result
+        self.package_output.setPlainText(f"Busqueda con {manager.name}. Codigo: {code}\n\n{output or 'Sin resultados.'}")
+        rows = self._parse_package_results(manager, output) if code == 0 else []
+        self.package_results = [name for name, _ in rows]
+        self.package_table.setRowCount(0)
+        for name, detail in rows:
+            row = self.package_table.rowCount()
+            self.package_table.insertRow(row)
+            for col, value in enumerate((name, manager.name, detail)):
+                item = QTableWidgetItem(value)
+                item.setData(Qt.ItemDataRole.UserRole, name)
+                self.package_table.setItem(row, col, item)
+        if rows:
+            self.package_table.selectRow(0)
+            self.package_name.setText(rows[0][0])
+
+    def _parse_package_results(self, manager: PackageManager, output: str) -> list[tuple[str, str]]:
+        rows: list[tuple[str, str]] = []
+        seen: set[str] = set()
+        for raw_line in output.splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("==>"):
+                continue
+            candidates: list[tuple[str, str]]
+            if manager.key == "brew":
+                candidates = [(token, line) for token in line.split()]
+            elif " - " in line:
+                name, detail = line.split(" - ", 1)
+                candidates = [(name.strip(), detail.strip())]
+            elif "\t" in line:
+                parts = [part.strip() for part in line.split("\t") if part.strip()]
+                candidates = [(parts[0], " | ".join(parts[1:]) if len(parts) > 1 else line)] if parts else []
+            else:
+                name = line.split(":", 1)[0].split()[0]
+                candidates = [(name.strip(), line)]
+            for name, detail in candidates:
+                clean = name.strip().strip(",")
+                if not clean or clean in seen:
+                    continue
+                seen.add(clean)
+                rows.append((clean, detail))
+                if len(rows) >= 200:
+                    return rows
+        return rows
+
+    def _package_result_selected(self) -> None:
+        row = self.package_table.currentRow()
+        if row < 0:
+            return
+        item = self.package_table.item(row, 0)
+        if item:
+            self.package_name.setText(item.text())
+
+    def _selected_package_detail(self, package_name: str) -> str:
+        row = self.package_table.currentRow()
+        if row >= 0:
+            values = []
+            for col in range(self.package_table.columnCount()):
+                item = self.package_table.item(row, col)
+                if item:
+                    values.append(item.text())
+            if values and values[0] == package_name:
+                return " | ".join(values)
+        return package_name
 
     def _pick_directory(self, field: QLineEdit) -> None:
         value = QFileDialog.getExistingDirectory(self, "Seleccionar carpeta")

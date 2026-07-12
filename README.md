@@ -8,13 +8,13 @@ SysCare es una aplicacion grafica para Linux y macOS orientada a mantenimiento d
 - Mantenimiento adicional para pip, npm, Docker, Quick Look, Xcode DerivedData y caches de gestores Linux cuando existan.
 - Optimizacion de memoria RAM mediante la herramienta nativa disponible (`purge` en macOS con autorizacion del sistema).
 - Deteccion de equivalentes Linux/macOS a entradas invalidas del registro: enlaces rotos, `.desktop` sin destino, LaunchAgents obsoletos y archivos grandes.
-- Busqueda y recuperacion de archivos borrados que aun estan en papeleras accesibles del usuario o de volumenes montados.
-- Recuperacion propia por papelera local, por carpeta original y por papeleras de discos/volumenes sin servicios de terceros.
+- Busqueda y recuperacion de archivos borrados que aun estan en papeleras accesibles del usuario, Finder de macOS, repositorios/carpetas o volumenes montados.
+- Recuperacion propia por papelera local, repositorio/carpeta seleccionada y papeleras de discos/volumenes sin servicios de terceros.
 - Panel de rendimiento con CPU, memoria, disco, bateria y temperaturas disponibles.
 - En macOS muestra estado termico mediante `pmset` cuando no hay sensores de temperatura accesibles.
 - Indicador en barra superior/bandeja del sistema con memoria y temperatura, y menu para mostrar/ocultar, limpiar o buscar actualizaciones.
 - Buscador de aplicaciones instaladas.
-- Instalador y desinstalador de paquetes mediante Homebrew, MacPorts, apt, dnf, yum, zypper, pacman, snap o flatpak.
+- Instalador y desinstalador de paquetes mediante Homebrew, MacPorts, apt, dnf, yum, zypper, pacman, snap o flatpak, con tabla de resultados antes de instalar.
 - Desinstalacion de apps `.app` en macOS moviendolas a la papelera.
 - Compresion y descompresion de carpetas/archivos.
 - Comprobacion de actualizaciones desde GitHub Releases o ultimo commit de GitHub.
@@ -150,5 +150,5 @@ La limpieza esta limitada a rutas de usuario y temporales conocidos. En director
 
 Linux y macOS no tienen registro de Windows. Por eso SysCare trata como "entradas invalidas" los accesos y metadatos equivalentes: enlaces rotos, launch agents obsoletos, accesos `.desktop` invalidos y referencias a apps eliminadas.
 
-La recuperacion propia funciona si el archivo sigue dentro de una papelera accesible del usuario o de un volumen montado.
-La recuperacion de disco completo se limita a papeleras accesibles del usuario y volumenes montados. macOS/APFS no permite recuperar sectores borrados permanentemente desde una app normal sin herramientas forenses y permisos especiales.
+La recuperacion propia funciona si el archivo sigue dentro de una papelera accesible del usuario, si Finder de macOS lo expone en la Papelera, o si esta dentro de una carpeta/repositorio seleccionado.
+La recuperacion de disco completo se limita a papeleras accesibles del usuario, Finder y volumenes montados. macOS/APFS no permite recuperar sectores borrados permanentemente desde una app normal sin herramientas forenses y permisos especiales.
