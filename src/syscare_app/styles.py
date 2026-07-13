@@ -5,7 +5,7 @@ APP_QSS = """
   letter-spacing: 0px;
 }
 QMainWindow, QWidget#Root {
-  background: #f7f9fc;
+  background: #f4f7fb;
   color: #172033;
 }
 QWidget {
@@ -26,12 +26,12 @@ QMessageBox QPushButton, QDialog QPushButton, QFileDialog QPushButton {
   min-width: 88px;
 }
 QFrame#Header {
-  background: #ffffff;
+  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ffffff, stop:0.7 #ffffff, stop:1 #f2f7ff);
   border-bottom: 1px solid #dbe3ee;
 }
 QFrame#Hero {
-  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ecfff8, stop:0.55 #f4fbff, stop:1 #ffffff);
-  border: 1px solid #b8ead8;
+  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #e9fff7, stop:0.52 #f4fbff, stop:1 #fff8ed);
+  border: 1px solid #aee9d4;
   border-radius: 8px;
 }
 QLabel#LogoImage {
@@ -70,12 +70,21 @@ QLabel#HealthScore {
   font-weight: 900;
 }
 QLabel#HeaderMetric {
-  background: #eef4ff;
-  color: #244169;
-  border: 1px solid #d7e5ff;
+  background: #edf6ff;
+  color: #173b63;
+  border: 1px solid #cce1ff;
   border-radius: 8px;
-  padding: 8px 10px;
+  padding: 10px 12px;
   font-weight: 700;
+}
+QLabel#TempSummary {
+  background: #f8fbff;
+  color: #173b63;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 15px;
+  font-weight: 850;
 }
 QLabel#Muted, QLabel[muted="true"] {
   color: #64748b;
@@ -83,17 +92,18 @@ QLabel#Muted, QLabel[muted="true"] {
 QPushButton {
   background: #ffffff;
   color: #223047;
-  border: 1px solid #cbd5e1;
+  border: 1px solid #c5d0df;
   border-radius: 8px;
-  padding: 9px 12px;
+  padding: 10px 13px;
   font-weight: 700;
 }
 QPushButton:hover {
-  background: #f8fbff;
-  border-color: #7ddfc4;
+  background: #f6fffb;
+  border-color: #18b989;
+  color: #0f3b31;
 }
 QPushButton:pressed {
-  background: #e2e8f0;
+  background: #dff7ef;
 }
 QPushButton:disabled {
   color: #94a3b8;
@@ -101,12 +111,12 @@ QPushButton:disabled {
   border-color: #e2e8f0;
 }
 QPushButton[primary="true"] {
-  background: #19c391;
+  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #14bd8a, stop:1 #22d3a2);
   color: #05261d;
-  border-color: #19c391;
+  border-color: #10b981;
 }
 QPushButton[primary="true"]:hover {
-  background: #2ed0a0;
+  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #22d3a2, stop:1 #4adebd);
 }
 QPushButton[danger="true"] {
   background: #fff1f2;
@@ -125,15 +135,16 @@ QPushButton[nav="true"] {
   color: #475569;
 }
 QPushButton[nav="true"]:hover {
-  background: #f1f5f9;
+  background: #eef6ff;
+  color: #173b63;
 }
 QPushButton[nav="true"]:checked {
-  background: #e7f8f2;
+  background: #dff7ef;
   color: #08795f;
 }
 QFrame[card="true"] {
-  background: #ffffff;
-  border: 1px solid #d8e2ee;
+  background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #fbfdff);
+  border: 1px solid #d4dfec;
   border-radius: 8px;
 }
 QLineEdit, QComboBox {
@@ -145,6 +156,7 @@ QLineEdit, QComboBox {
 }
 QLineEdit:focus, QComboBox:focus, QTextEdit:focus, QTableWidget:focus, QListWidget:focus {
   border-color: #19c391;
+  background: #fbfffd;
 }
 QTableWidget, QListWidget, QTextEdit {
   background: #ffffff;
@@ -153,14 +165,17 @@ QTableWidget, QListWidget, QTextEdit {
   border: 1px solid #d8e2ee;
   border-radius: 8px;
   gridline-color: #e6edf5;
-  selection-background-color: #dff7ef;
+  selection-background-color: #d7f5ec;
   selection-color: #0f2d25;
 }
 QTableWidget::item {
   padding: 6px;
 }
+QTableWidget::item:hover {
+  background: #eefaf6;
+}
 QHeaderView::section {
-  background: #f4f7fb;
+  background: #eef4fb;
   color: #475569;
   border: 0;
   border-bottom: 1px solid #dbe3ee;
@@ -176,7 +191,7 @@ QProgressBar {
   height: 14px;
 }
 QProgressBar::chunk {
-  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #19c391, stop:1 #53d7b0);
+  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #12b981, stop:0.55 #22d3a2, stop:1 #60a5fa);
   border-radius: 7px;
 }
 QCheckBox {
@@ -215,5 +230,12 @@ QMenu::item {
 }
 QMenu::item:selected {
   background: #e7f8f2;
+}
+QToolTip {
+  background: #ffffff;
+  color: #172033;
+  border: 1px solid #b8c7d9;
+  border-radius: 6px;
+  padding: 7px 9px;
 }
 """

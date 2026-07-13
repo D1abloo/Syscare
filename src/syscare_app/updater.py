@@ -91,7 +91,7 @@ def check_updates(current_version: str, cwd: Path) -> UpdateInfo:
             if code == 0 and latest_sha and latest_sha != local_sha.strip():
                 return UpdateInfo(True, f"Hay cambios nuevos en GitHub ({latest_sha}).", latest_sha, html_url, can_git_pull=True)
             if latest_sha:
-                return UpdateInfo(False, f"GitHub no muestra cambios nuevos. Ultimo commit: {latest_sha}.", latest_sha, html_url)
+                return UpdateInfo(False, "No existen actualizaciones disponibles. SysCare ya esta al dia.", latest_sha, html_url)
             return UpdateInfo(False, "GitHub respondio sin informacion de commit.", url=url)
         except Exception as exc:
             return UpdateInfo(False, f"No se pudo consultar GitHub. Releases: {release_error}. Commits: {exc}", url=url)

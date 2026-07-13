@@ -96,6 +96,16 @@ def make_button(text: str, primary: bool = False, danger: bool = False) -> QPush
     return button
 
 
+def _thermal_summary(temps: list[tuple[str, float | None]]) -> str:
+    labels = [name.lower() for name, value in temps if value is None]
+    joined = " ".join(labels)
+    if "normal" in joined:
+        return "normal"
+    if "warning" in joined or "limit" in joined or "limite" in joined:
+        return "revision"
+    return "estado"
+
+
 def card(title: str, subtitle: str = "") -> tuple[QFrame, QVBoxLayout]:
     frame = QFrame()
     frame.setProperty("card", True)
@@ -127,6 +137,7 @@ class MainWindow(QMainWindow):
         self.maintenance_items = maintenance_items()
         self.recoverable_files: list[RecoverableFile] = []
         self.package_results: list[str] = []
+        self.metric_animations: dict[QProgressBar, QPropertyAnimation] = {}
 
         self.root = QWidget()
         self.root.setObjectName("Root")
@@ -369,6 +380,8 @@ class MainWindow(QMainWindow):
         lower = QGridLayout()
         lower.setSpacing(14)
         temp_card, temp_layout = card("Temperaturas", "Lecturas expuestas por el sistema operativo.")
+        self.temp_summary_label = make_label("Temperatura: calculando...", "TempSummary")
+        temp_layout.addWidget(self.temp_summary_label)
         self.temp_list = QListWidget()
         temp_layout.addWidget(self.temp_list)
         lower.addWidget(temp_card, 0, 0)
@@ -393,6 +406,12 @@ class MainWindow(QMainWindow):
         layout.addWidget(value)
         layout.addWidget(bar)
         return bar, value, frame
+
+    def _table_item(self, value: object, tooltip: str | None = None) -> QTableWidgetItem:
+        text = str(value)
+        item = QTableWidgetItem(text)
+        item.setToolTip(tooltip if tooltip is not None else text)
+        return item
 
     def _build_clean_page(self) -> QWidget:
         page, layout = self._page_shell("Limpieza segura", "Escanea primero y decide que categorias limpiar.")
@@ -428,12 +447,12 @@ class MainWindow(QMainWindow):
             checkbox.setChecked(not target.risky)
             checkbox.setProperty("target_key", target.key)
             self.clean_table.setCellWidget(row, 0, checkbox)
-            self.clean_table.setItem(row, 1, QTableWidgetItem(target.category))
-            self.clean_table.setItem(row, 2, QTableWidgetItem(target.name))
-            self.clean_table.setItem(row, 3, QTableWidgetItem("--"))
-            self.clean_table.setItem(row, 4, QTableWidgetItem("--"))
+            self.clean_table.setItem(row, 1, self._table_item(target.category))
+            self.clean_table.setItem(row, 2, self._table_item(target.name, "\n".join(str(path) for path in target.paths)))
+            self.clean_table.setItem(row, 3, self._table_item("--"))
+            self.clean_table.setItem(row, 4, self._table_item("--"))
             note = "Requiere atencion: " + target.description if target.risky else target.description
-            self.clean_table.setItem(row, 5, QTableWidgetItem(note))
+            self.clean_table.setItem(row, 5, self._table_item(note))
             self.cleanup_rows[target.key] = row
 
     def _build_maintenance_page(self) -> QWidget:
@@ -488,7 +507,7 @@ class MainWindow(QMainWindow):
             self.maintenance_table.insertRow(row)
             values = (item.category, item.title, "Alto" if item.risky else "Bajo", "Disponible", item.description)
             for col, value in enumerate(values):
-                table_item = QTableWidgetItem(value)
+                table_item = self._table_item(value)
                 table_item.setData(Qt.ItemDataRole.UserRole, item)
                 self.maintenance_table.setItem(row, col, table_item)
 
@@ -504,6 +523,7 @@ class MainWindow(QMainWindow):
         self.recovery_folder = QLineEdit()
         self.recovery_folder.setPlaceholderText("Carpeta o repositorio a escanear...")
         self.recovery_folder.setVisible(False)
+        self.recovery_folder.textChanged.connect(lambda value: self.recovery_folder.setToolTip(value))
         folder_button = make_button("Elegir")
         folder_button.clicked.connect(self._pick_recovery_folder)
         folder_button.setVisible(False)
@@ -672,6 +692,7 @@ class MainWindow(QMainWindow):
     def _path_row(self, label: str, field: QLineEdit, action: Callable) -> QHBoxLayout:
         row = QHBoxLayout()
         field.setPlaceholderText(label)
+        field.textChanged.connect(lambda value, target=field: target.setToolTip(value))
         button = make_button("Elegir")
         button.clicked.connect(action)
         row.addWidget(field, 1)
@@ -766,11 +787,11 @@ SysCare evita rutas del sistema y trabaja sobre carpetas del usuario o temporale
     @Slot()
     def _refresh_performance(self) -> None:
         data = performance_snapshot()
-        self.cpu_bar.setValue(int(data["cpu"]))
+        self._set_bar_value(self.cpu_bar, int(data["cpu"]))
         self.cpu_value.setText(f"{data['cpu']:.0f}% de uso")
-        self.memory_bar.setValue(int(data["memory_percent"]))
+        self._set_bar_value(self.memory_bar, int(data["memory_percent"]))
         self.memory_value.setText(f"{data['memory_percent']:.0f}% · {format_bytes(int(data['memory_used']))} / {format_bytes(int(data['memory_total']))}")
-        self.disk_bar.setValue(int(data["disk_percent"]))
+        self._set_bar_value(self.disk_bar, int(data["disk_percent"]))
         self.disk_value.setText(f"{data['disk_percent']:.0f}% · {format_bytes(int(data['disk_used']))} / {format_bytes(int(data['disk_total']))}")
         battery = data["battery"]
         self.battery_label.setText(f"{battery:.0f}% disponible" if battery is not None else "Sin bateria detectada")
@@ -780,9 +801,17 @@ SysCare evita rutas del sistema y trabaja sobre carpetas del usuario o temporale
 
         temps = temperature_snapshot()
         temp_values = [value for _, value in temps if value is not None]
-        temp_summary = f"{temp_values[0]:.1f} C" if temp_values else ("OK" if temps else "N/D")
+        temp_summary = f"{temp_values[0]:.1f} C" if temp_values else (_thermal_summary(temps) if temps else "N/D")
         memory_summary = f"{data['memory_percent']:.0f}% · {format_bytes(int(data['memory_used']))}"
         self.header_metric.setText(f"Memoria {memory_summary} · Temp {temp_summary}")
+        self.header_metric.setToolTip("\n".join(f"{name}: {value:.1f} C" if value is not None else name for name, value in temps) or "No hay lecturas de temperatura disponibles.")
+        if hasattr(self, "temp_summary_label"):
+            if temp_values:
+                self.temp_summary_label.setText(f"Temperatura principal: {temp_values[0]:.1f} C")
+            elif temps:
+                self.temp_summary_label.setText(f"Estado termico: {temp_summary}")
+            else:
+                self.temp_summary_label.setText("Temperatura: sin sensores expuestos por el sistema")
         if getattr(self, "tray_icon", None):
             cpu_summary = f"{data['cpu']:.0f}%"
             disk_summary = f"{data['disk_percent']:.0f}% · {format_bytes(int(data['disk_used']))}"
@@ -796,7 +825,18 @@ SysCare evita rutas del sistema y trabaja sobre carpetas del usuario o temporale
         if not temps:
             self.temp_list.addItem("No hay sensores de temperatura expuestos por el sistema.")
         for name, value in temps[:24]:
-            self.temp_list.addItem(f"{name}: {value:.1f} C" if value is not None else name)
+            item_text = f"{name}: {value:.1f} C" if value is not None else name
+            self.temp_list.addItem(item_text)
+
+    def _set_bar_value(self, bar: QProgressBar, value: int) -> None:
+        animation = QPropertyAnimation(bar, b"value", self)
+        animation.setDuration(360)
+        animation.setStartValue(bar.value())
+        animation.setEndValue(max(0, min(100, value)))
+        animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self.metric_animations[bar] = animation
+        animation.finished.connect(lambda target=bar: self.metric_animations.pop(target, None))
+        animation.start()
 
     def _scan_cleanup(self) -> None:
         self.clean_status.setText("Escaneando rutas...")
@@ -808,9 +848,13 @@ SysCare evita rutas del sistema y trabaja sobre carpetas del usuario o temporale
             self.cleanup_reports[report.target.key] = report
             row = self.cleanup_rows[report.target.key]
             self.clean_table.item(row, 3).setText(format_bytes(report.size))
+            self.clean_table.item(row, 3).setToolTip(format_bytes(report.size))
             self.clean_table.item(row, 4).setText(str(report.items))
+            self.clean_table.item(row, 4).setToolTip(str(report.items))
             if report.errors:
-                self.clean_table.item(row, 5).setText(f"{report.target.description} · {len(report.errors)} avisos")
+                warning_text = f"{report.target.description} · {len(report.errors)} avisos"
+                self.clean_table.item(row, 5).setText(warning_text)
+                self.clean_table.item(row, 5).setToolTip("\n".join(report.errors))
             total += report.size
         self.clean_status.setText(f"Escaneo completo: {format_bytes(total)} encontrados.")
 
@@ -894,7 +938,7 @@ SysCare evita rutas del sistema y trabaja sobre carpetas del usuario o temporale
             self.issue_table.insertRow(row)
             values = (issue.kind, issue.path, format_bytes(issue.size) if issue.size else "--", issue.detail)
             for col, value in enumerate(values):
-                self.issue_table.setItem(row, col, QTableWidgetItem(value))
+                self.issue_table.setItem(row, col, self._table_item(value))
         self.issue_status.setText(f"Analisis completado: {len(issues)} elementos encontrados.")
 
     def _recovery_scope_changed(self, scope: str) -> None:
@@ -949,7 +993,7 @@ SysCare evita rutas del sistema y trabaja sobre carpetas del usuario o temporale
             self.recovery_table.insertRow(row)
             values = (file.name, format_bytes(file.size), file.deleted_at or "--", file.original_path or "--", file.trash_path)
             for col, value in enumerate(values):
-                item = QTableWidgetItem(value)
+                item = self._table_item(value)
                 item.setData(Qt.ItemDataRole.UserRole, file)
                 self.recovery_table.setItem(row, col, item)
         detail = f"Encontrados {len(files)} elementos recuperables."
@@ -1006,7 +1050,7 @@ SysCare evita rutas del sistema y trabaja sobre carpetas del usuario o temporale
             row = self.installed_table.rowCount()
             self.installed_table.insertRow(row)
             for col, value in enumerate((app.name, app.source, app.identifier, app.path)):
-                item = QTableWidgetItem(value)
+                item = self._table_item(value)
                 item.setData(Qt.ItemDataRole.UserRole, app)
                 self.installed_table.setItem(row, col, item)
 
@@ -1104,7 +1148,7 @@ SysCare evita rutas del sistema y trabaja sobre carpetas del usuario o temporale
             row = self.package_table.rowCount()
             self.package_table.insertRow(row)
             for col, value in enumerate((name, manager.name, detail)):
-                item = QTableWidgetItem(value)
+                item = self._table_item(value)
                 item.setData(Qt.ItemDataRole.UserRole, name)
                 self.package_table.setItem(row, col, item)
         if rows:
