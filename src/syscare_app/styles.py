@@ -231,6 +231,12 @@ QMenu::item {
 QMenu::item:selected {
   background: #e7f8f2;
 }
+QStatusBar {
+  background: #ffffff;
+  color: #64748b;
+  border-top: 1px solid #dbe3ee;
+  padding: 4px 10px;
+}
 QToolTip {
   background: #ffffff;
   color: #172033;

@@ -89,7 +89,7 @@ def check_updates(current_version: str, cwd: Path) -> UpdateInfo:
             html_url = str(payload.get("html_url") or url)
             code, local_sha = _run_git(["rev-parse", "--short=12", "HEAD"], cwd)
             if code == 0 and latest_sha and latest_sha != local_sha.strip():
-                return UpdateInfo(True, f"Hay cambios nuevos en GitHub ({latest_sha}).", latest_sha, html_url, can_git_pull=True)
+                return UpdateInfo(True, "Hay actualizaciones disponibles en GitHub.", latest_sha, html_url, can_git_pull=True)
             if latest_sha:
                 return UpdateInfo(False, "No existen actualizaciones disponibles. SysCare ya esta al dia.", latest_sha, html_url)
             return UpdateInfo(False, "GitHub respondio sin informacion de commit.", url=url)

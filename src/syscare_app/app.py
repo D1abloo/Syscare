@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Callable
 
 from PySide6.QtCore import QEvent, QEasingCurve, QPropertyAnimation, Qt, QThread, QTimer, Signal, Slot
-from PySide6.QtGui import QAction, QCloseEvent, QColor, QIcon, QPalette
+from PySide6.QtGui import QAction, QCloseEvent, QColor, QFont, QIcon, QPalette
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QListWidget,
+    QListWidgetItem,
     QMainWindow,
     QMenu,
     QMessageBox,
@@ -170,6 +171,7 @@ class MainWindow(QMainWindow):
             self.stack.addWidget(page)
 
         self._switch_page(0)
+        self.statusBar().showMessage("SysCare listo.")
         self._refresh_performance()
         self.metric_timer = QTimer(self)
         self.metric_timer.timeout.connect(self._refresh_performance)
@@ -768,6 +770,7 @@ SysCare evita rutas del sistema y trabaja sobre carpetas del usuario o temporale
         animation.start(QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
 
     def _run_task(self, fn: Callable, on_done: Callable, *args) -> None:
+        self.statusBar().showMessage("Procesando tarea...")
         thread = TaskThread(fn, *args)
         thread.done.connect(on_done)
         thread.failed.connect(lambda message: QMessageBox.critical(self, "Error", message))
@@ -778,6 +781,8 @@ SysCare evita rutas del sistema y trabaja sobre carpetas del usuario o temporale
     def _cleanup_thread(self, thread: TaskThread) -> None:
         if thread in self.threads:
             self.threads.remove(thread)
+        if not self.threads:
+            self.statusBar().showMessage("SysCare listo.")
 
     def _wait_for_threads(self) -> None:
         for thread in list(self.threads):
@@ -823,10 +828,14 @@ SysCare evita rutas del sistema y trabaja sobre carpetas del usuario o temporale
 
         self.temp_list.clear()
         if not temps:
-            self.temp_list.addItem("No hay sensores de temperatura expuestos por el sistema.")
+            item = QListWidgetItem("No hay sensores de temperatura expuestos por el sistema.")
+            item.setToolTip("macOS puede mostrar solo estado termico mediante pmset si no expone sensores en grados.")
+            self.temp_list.addItem(item)
         for name, value in temps[:24]:
             item_text = f"{name}: {value:.1f} C" if value is not None else name
-            self.temp_list.addItem(item_text)
+            item = QListWidgetItem(item_text)
+            item.setToolTip(item_text)
+            self.temp_list.addItem(item)
 
     def _set_bar_value(self, bar: QProgressBar, value: int) -> None:
         animation = QPropertyAnimation(bar, b"value", self)
@@ -1272,6 +1281,7 @@ def main() -> None:
     app.setApplicationName(__app_name__)
     app.setQuitOnLastWindowClosed(False)
     app.setStyle("Fusion")
+    app.setFont(QFont("Arial", 13))
     app.setWindowIcon(QIcon(str(Path(__file__).with_name("assets") / "app_icon.svg")))
     palette = QPalette()
     palette.setColor(QPalette.ColorRole.Window, QColor("#ffffff"))
